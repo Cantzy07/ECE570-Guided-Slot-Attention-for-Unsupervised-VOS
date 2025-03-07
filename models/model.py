@@ -116,4 +116,17 @@ class GlobalExtractor(nn.Module):
         x = self.pooling(x)
         return x
 
-# class SlotGenerator(nn.Module):
+class SlotGenerator(nn.Module):
+    def __init__(self, in_channels, slot_num):
+        self.input_1x1conv = nn.Conv2d(in_channels=in_channels, out_channels=slot_num, kernel_size=1)
+        # Pixel-wise softmax
+        self.softmax_w = nn.Softmax(dim=-1)  # Apply softmax along the last dimension (width)
+        self.softmax_h = nn.Softmax(dim=-2)  # Apply softmax along the second last dimension (height)
+        self.pooling = nn.AvgPool2d()
+
+    def forward(self, x):
+        x = self.input_1x1conv(x)
+        x = self.softmax_w(x)
+        x = self.softmax_h(x)
+        x = self.pooling(x)
+        return x
