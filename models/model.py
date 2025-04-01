@@ -2,10 +2,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parameter as Parameter
 import numpy as np
-import torchvision
 from transformers import SegformerForImageClassification, SegformerImageProcessor
 from sklearn.cluster import KMeans
 import torch
+from FAT import FAT
 
 def weight_init(module):
     for n, m in module.named_children():
@@ -34,99 +34,56 @@ def weight_init(module):
             except:
                 pass
 
-def get_cluster_mask(self):
-        # Reshape to (num_pixels, num_features)
-        C, H, W = self.embedding.shape[1:]  
-        features = self.embedding.view(C, H * W).T.cpu().numpy()  # Shape: (H*W, C)
-        self.kmeans.fit(self.embedding)
-        cluster_labels = self.kmeans.labels_.reshape(H, W)  # Reshape back to spatial dimensions
-        # Generate D binary masks
-        cluster_masks = np.zeros((len(cluster_labels), H, W))  # Shape: (D, H, W)
-
-        for d in range(len(cluster_labels)):
-            cluster_masks[d] = (cluster_labels == d).astype(np.uint8)  # 1 for pixels in cluster d, 0 otherwise
-
-        return cluster_masks
-
-def gwap(masks, embedding):
-    features = []
-    for mask in masks:
-        feature_vector = []
-        for channel in embedding:
-            weighted_feature_map = np.multiply(channel, mask)
-            weighted_sum = sum(weighted_feature_map)
-            mask_weight_sum = sum(mask)
-            weighted_avg = weighted_sum / mask_weight_sum
-            feature_vector.append(weighted_avg)
-        
-        features.append(feature_vector)
-
-    return features
-
-
 class Model(nn.Module):
-    def __init__(self):    
+    def __init__(self):  
+        super(Model, self).__init__()  
         self.rgb_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
         self.flow_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
         self.processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b2")
+        self.FAT_features = FAT(local_in=128, global_in=16)
+        self.FAT_slots = FAT(local_in=128, global_in=16)
 
-class LocalExtractor(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        self.num_clusters = 64
-        self.input_1x1conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
-        self.pooling = nn.AvgPool2d()
+    def encode_image(self, image):
+        # Preprocess the image
+        inputs = self.processor(images=image, return_tensors="pt")
 
-    def get_cluster_maps(self, num_clusters, encoded_features):
-        kmeans = KMeans(n_clusters=num_clusters, mode='Euclidean', max_iter=10, verbose=0)
-        cluster_labels = kmeans.fit_predict(encoded_features)
+        # Forward pass through the model
+        with torch.no_grad():
+            outputs = self.rgb_encoder(**inputs, output_hidden_states=True)
 
-        # Reshape cluster labels back to (H, W)
-        cluster_map = cluster_labels.reshape(encoded_features.size(1), encoded_features.size(2))
+        # Outputs contain multi-scale feature maps
+        # B, C, H, W
+        stage_1 = outputs.hidden_states[0]  # Local (1/4 size)
+        stage_2 = outputs.hidden_states[1]  # Local (1/8 size)
+        stage_3 = outputs.hidden_states[2]  # Global (1/16 size)
+        stage_4 = outputs.hidden_states[3]  # Global (1/32 size)
 
-        # Initialize a list to store binary cluster maps
-        binary_cluster_maps = []
-
-        # Create binary maps for each cluster
-        for cluster_id in range(num_clusters):
-            binary_map = (cluster_map == cluster_id).astype(np.float32)
-            binary_cluster_maps.append(binary_map)
-
-        # Convert list of binary maps to a tensor (optional)
-        binary_cluster_maps = torch.tensor(np.stack(binary_cluster_maps, axis=0))
-
-        return binary_cluster_maps
+        return stage_1, stage_2, stage_3, stage_4
     
-    def forward(self, x):
-        x = self.input_1x1conv(x)
-        x = get_cluster_mask(self.num_clusters, x)
-        x = self.pooling(x)
-        return x
+    def generate_slots(self, image):
+        stage_1, stage_2, stage_3, stage_4 = self.encode_image(image)
 
-class GlobalExtractor(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        self.fpn = torchvision.ops.FeaturePyramidNetwork(in_channels_list=[64, 128, 320, 512], out_channels=256)
-        self.ref_1x1conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
-        self.softmax_global = nn.Softmax2d()
-        self.pooling = nn.AvgPool2d()
+        slot_generator = SlotGenerator(in_channels=64, slot_num=2)
 
-    def forward(self, x):
-        x = self.fpn(x)
-        x = self.ref_1x1conv
-        x = self.softmax_global(x)
-        x = self.pooling(x)
-        return x
+        slots = slot_generator(stage_1)
+
+        return slots
+    
+    # def forward(self, x):
+
 
 class SlotGenerator(nn.Module):
     def __init__(self, in_channels, slot_num):
+        super(SlotGenerator, self).__init__()  
         self.input_1x1conv = nn.Conv2d(in_channels=in_channels, out_channels=slot_num, kernel_size=1)
         # Pixel-wise softmax
         self.softmax_w = nn.Softmax(dim=-1)  # Apply softmax along the last dimension (width)
         self.softmax_h = nn.Softmax(dim=-2)  # Apply softmax along the second last dimension (height)
-        self.pooling = nn.AvgPool2d()
+        self.globalavgpool = nn.AvgPool2d(kernel_size=(128, 128))  # Pool over the entire spatial dimension
 
     def forward(self, x):
         x = self.input_1x1conv(x)
         x = self.softmax_w(x)
         x = self.softmax_h(x)
-        x = self.pooling(x)
+        x = self.globalavgpool(x)
         return x

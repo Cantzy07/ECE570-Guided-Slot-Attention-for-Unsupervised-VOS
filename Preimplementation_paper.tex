@@ -53,15 +53,10 @@
 %\usepackage[disable,textsize=tiny]{todonotes}
 \usepackage[textsize=tiny]{todonotes}
 
-
-% The \icmltitle you define below is probably too long as a header.
-% Therefore, a short form for the running title is supplied here:
-\icmltitlerunning{Submission and Formatting Instructions for ICML 2025}
-
 \begin{document}
 
 \twocolumn[
-\icmltitle{Investigating Guided Slot Attention for Unsupervised Video Object Segmentation}
+\icmltitle{Investigating Applications of Computer Vision in Real World Scenarios}
 
 % It is OKAY to include author information, even for blind
 % submissions: the style file will automatically remove it for you
@@ -131,9 +126,7 @@ These papers seek to address these problems with computer vision:
 
 \textbf{2.	How to improve the computational efficiency of gaze token processing for scenes requiring gaze following}
 
-\textbf{3.	How to improve computation speed while also widening the receptive field for occupancy area prediction}
-
-
+\textbf{3.	How to improve computation speed while also widening the receptive field for occupancy area prediction in self-driving vehicles}
 
 \section*{Summary and Critique of Selected Papers}
 \textbf{Sharingan: A Transformer Architecture for Multi-Person Gaze Following:}
@@ -146,11 +139,11 @@ Sharingan was created as a remedy to multi-person gaze following. Previously, ma
 \textbf{Guided Slot Attention for Unsupervised Video Object Segmentation: }
 This paper introduces more accurate object mask creation for unsupervised VOS. In order to improve masking, background and foreground slots were initialized with query guidance to increase separation. Additionally, the proposed feature aggregation transformer uses target features from the local extractor and reference features from the global extractor then performs slot attention using the aggregated features and guided slots and adjusts the slots using KNN. Finally, a slot decoder is used to generate the final mask for the frame. By purposefully separating the foreground and background, accurate masking can be performed in scenes with complex foreground and background objects and textures.
 
-\hspace{20pt} The main contribution of this paper is the guided slot generator and slot attention framework that allows for state of the art foreground and background separation.  The slot generator takes the embeddings for the target image feature and pushes it through a 1x1 convolutional layer then applies a softmax operation on the output. Afterwards this output undergoes a global weighted average pooling with the target feature embedded in the local extractor which yields the guided slot blocks that assist in the final mask generation. Utilizing the slot attention module introduced in the Object-Centric Learning with Slot Attention paper by Google Research, slot attention can extract object-centric representations that enable generalization for unseen compositions which make it ideal for unsupervised learning.
+\hspace{20pt} The main contribution of this paper is the guided slot generator and slot attention framework that allows for state of the art foreground and background separation.  The slot generator takes the embeddings for the target image feature and pushes it through a 1x1 convolutional layer then applies a softmax operation on the output. Afterwards this output undergoes a global weighted average pooling with the target feature embedded in the local extractor which yields the guided slot blocks that assist in the final mask generation. Utilizing the slot attention module introduced in the \textit{Object-Centric Learning with Slot Attention} [5] paper by Google Research, slot attention can extract object-centric representations that enable generalization for unseen compositions which make it ideal for unsupervised learning.
 
 \hspace{20pt} The quantitative performance evaluation of this model utilized the DAVIS-16 and FBMS datasets. For the DAVIS -16 dataset three values were compared with other top performing models: JM (Jaccard Index, or Region Similarity - "IM"), FM (Contour-based F-measure - "FM"), GM (Generalized Metric - "GM"). Using the MiT-b2 encoder model this architecture achieves state of the art performance across all quantitative metrics as well as the FM metric on the FBMS dataset.
 
-\hspace{20pt} Although this model achieves state of the art performance under a specific backbone, this is at the cost of frames per second (FPS). The metrics achieved yielded 4.1 FPS, sacrificing accuracy for speed which is not feasible in real time applications. Under the two tests yielding 41.5 fps and 38.2 fps for the ResNet101 and MiT-b2 encoding backbones respectively, the performance was still above average but did not beat the state of the art models in the performance metrics. Conversely, despite not beating other models in metrics in the higher fps testing, the trade in speed causes it to have the best accuracy to fps ratio out of all other high fps models. Another criticism of the paper is that the usage of KNN filtering doesn’t guarantee convergence and doesn’t inherently optimize a function. There are other unsupervised learning algorithms available that may provide a better approach that ensures convergence such as expectation maximization or using principal component analysis for filtering.
+\hspace{20pt} Although this model achieves state of the art performance under a specific backbone, this is at the cost of frames per second (FPS). The metrics achieved yielded 4.1 FPS, sacrificing accuracy for speed which is not feasible in real time applications. Under the two tests yielding 41.5 fps and 38.2 fps for the ResNet101 and MiT-b2 encoding backbones respectively, the performance was still above average but did not beat the state of the art models in the performance metrics. Conversely, despite not beating other models in metrics in the higher fps testing, the trade in speed causes it to have the best accuracy to fps ratio out of all other high fps models. Another criticism of the paper is that the usage of KMeans to cluster similar features doesn’t guarantee convergence and doesn’t inherently optimize a function due to the possibility of ambiguous features and improperly selected k values for cluster size. There are other unsupervised learning algorithms available that may provide a better approach that ensures convergence such as expectation maximization or using principal component analysis for filtering.
 
 \textbf{Implicit occupancy flow fields for perception and prediction in self-driving: }
 This paper introduces IMPLITO which utilizes an implicit representation to predict occupancy probability and flow over time from sensor data and HD maps. They leverage deformable convolutions and cross attention in order to overcome shortcomings of previous self driving methods such as the limited receptive field of fully convolutional explicit architectures. The model takes in a multi sweep Lidar and a Map Raster and puts it through an encoder then through an implicit decoder to predict both occupancy and reverse flow.
@@ -161,19 +154,64 @@ The proposed architecture takes in a Voxelized LiDAR, raster map, and a mini-bat
 \hspace{20pt} One issue is that with increasing query points, the MP3 and OccFlow model maintain constant inference time. Although IMPLITO outperforms MP3 and OccFlow and has a constant inference time at <20,000 query points. Introducing more query points causes the model to increase in inference time linearly and thus will eventually have an inferior inference time given a very large amount of query points.
 
 \section*{Implementation}
-\textbf{Experimental Setup}
+\textbf{Experimental Setup:}
+Initial implementation for the project is based off the architecture for \textit{Guided Slot Attention for Unsupervised Video Object Segmentation} [1] Paper. It explored the ResNet101 and MiT-b2 encoder backbones presented in the paper and chose the MiT-b2 encoder as the one to be used in the preliminary implementation. The goal of the pre-implementation was to familiarize myself with encoding a raw rgb image into a feature embedding, methodology between local and global feature extraction from the embedding, and conceptual understanding of the slot attention process. 
 
-balh blah
+\textbf{Preliminary Implementation Efforts: }
+The MiT-b2 encoder backbone was used to process a raw rgb input image and output encoded features from the given image. The hidden sizes for the features consist of [64, 128, 320, 512]. After this the input image was put through 3 different pathways for processing. The first path was the Slot Generator, which passed the encoded input image features through a 1x1 convolution then performed the pixel-wise softmax shown below, where $N_s$ is the number of slots (2 for foreground and background slots), and X is the input image:
 
-\textbf{Preliminary Implementation Efforts}
+\begin{align}
+    M_{S(x,y)}^{i} &= \frac{e^{X_{S(x,y)}^{i}}}{\sum_{i=1}^{N_s} e^{X_{S(x,y)}^{i}}}
+\end{align}
 
-blah blah
+\hspace{20pt}After this, global weighted average pooling was performed with the target image feature embedded in the local extractor using the methodology below by taking the input feature tensor and multiplying it element-wise with the cluster masks:
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.25\textwidth]{Example Feature Map.png}
+    \caption{Feature Map Example}
+    \label{fig:image_label}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.25\textwidth]{Example Cluster Mask.png}
+    \caption{Cluster Mask Example}
+    \label{fig:image_label}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.25\textwidth]{Example Result.png}
+    \caption{Element-Wise Multiplication}
+    \label{fig:image_label}
+\end{figure}
+
+\hspace{20pt}Finally, the resulting matrix would get summed and divided it by the sum of the cluster mask. This would output several vectors each representing that specific cluster mask and its prominence in each channel of the encoded feature embedding. For the simplified example above, the resulting score would be 5.
+
+\hspace{20pt}Secondly, the local extractor path also performs a 1x1 convolution on the target image feature then performs k-means on the features to develop sets of cluster masks. Then global weighted average pooling is performed on the embedded local feature and the cluster masks to create vectors for each cluster representing the prominence in each channel.
+
+\hspace{20pt}Lastly, the global extractor path first has the encoded features from the MiT-b2 architecture pass through a feature pyramid network similar to the one laid out in the reference paper \textit{“Feature Pyramid Networks for Object Detection”} [7]. This consecutively dilates up the image size in order to prioritize broader features in the image. After performing this the encoded features undergo the same 1x1 convolution before having a channel-wise softmax operation shown below performed then doing a global weighted average pooling similar to the ones in the previous paths. Where H and W are the height and width of the image in pixels respectively, j is the number of channels, and X is the input image:
+
+\begin{align}
+    M_{G_{t}(x,y)}^{j} &= \frac{e^{X_{G_{t}(x,y)}^{j}}}{\sum_{x=1}^{H} \sum_{y=1}^{W} e^{X_{G_{t}(x,y)}^{j}}}
+\end{align}
+
+\hspace{20pt}\textbf{Next Steps for Implementation: }
+the next steps to take for the implementation would be to develop the feature aggregation transformer as laid out in the original paper. This would involve KNN filtering, applying the algorithm to implement guided slots and slot attention, multilayer perceptrons, and softmax operations:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{FAT.png}
+    \caption{Feature Aggregation Transformer}
+    \label{fig:image_label}
+\end{figure}
 
 \section*{Proposal for Course Project}
 \textbf{Methodology: }
-The objective for the semester project will be a full reimplementation of the ideas and architecture laid out in the \textit{Guided Slot Attention for Unsupervised Video Object Segmentation} paper. This includes using an encoder backbone to extract local and global features from the images and reference images. Passing the local embedding into a slot generator to generate background and foreground slots. Using a feature aggregation transformer to combine local and global extracted features. Then using the guided slots and aggregated features inside of a slot attention module to generate refined slots which when paired with the aggregated features can be decoded into a image mask. 
+The objective for the semester project will be a full re-implementation of the ideas and architecture laid out in the \textit{Guided Slot Attention for Unsupervised Video Object Segmentation} paper. This includes using an encoder backbone to extract local and global features from the images and reference images. Passing the local embedding into a slot generator to generate background and foreground slots. Using a feature aggregation transformer to combine local and global extracted features. Then using the guided slots and aggregated features inside of a slot attention module to generate refined slots which when paired with the aggregated features can be decoded into a image mask. 
 
-\hspace{20pt} One change to be made to the original architecture that will be explored in this project is attempting different unsupervised learning algorithms as a means of refinement in the slot attention module instead of K-Nearest-Neighbors in order to compare the differences in accuracy between the several methods to be implemented. Expectation Maximization and Principle Component Analysis are examples of algorithms that can be used instead or in tandem with the current architecture in order to yield improvements in quantitative results.
+\hspace{20pt} One change to be made to the original architecture that will be explored in this project is attempting different unsupervised learning algorithms for refinement in the slot attention module instead of KMeans in order to compare the differences in accuracy between the several methods to be implemented. Expectation Maximization and Principle Component Analysis are examples of algorithms that can be used instead or in tandem with the current architecture in order to yield improvements in quantitative results.
 
 \textbf{Feasibility and Relevance: }
 The main coding challenge of this implementation will be the feature aggregation transformer architecture for generating useful features from the global and local features and the slot generation and attention module. The KNN filtering, local/global extractors, and decoder are standard enough that online resources will help with architecture implementation. 
@@ -181,19 +219,24 @@ The main coding challenge of this implementation will be the feature aggregation
 \hspace{20pt} For innovations in the computer vision related field, it is highly important that accurate and fast masking models are implemented. Areas such as autonomous vehicles, augmented reality, security surveillance, robotics, and medical imaging benefit from this project. The benefit of having this architecture use unsupervised learning is better generalization and the discovery of hidden features. This allows the proposed project model to be applicable to a wider range of situations and improves scalability for future endeavors in the computer vision field.
 
 \textbf{Conclusion: }
-This project proposes an implementation of a guided slot attention mechanism for video object segmentation in an unsupervised learning context. Additionally, it aims to explore various unsupervised learning algorithms in order to integrate them into the existing slot attention module laid out in the original paper: Guided Slot Attention for Unsupervised Video Object Segmentation. By introducing object-centric slot attention through guided slots, background and foreground objects can be recognized and separated allowing for a more accurate masking of the most prominent object in a video object sequence.  Especially for crowded and complex foreground and background scenes, performing slot attention on slots in conjunction with extracted features from the given scene can yield accurate object segmentation that is beneficial for ongoing research and technological application in object detection and tracking.
+This project proposes an implementation of a guided slot attention mechanism for video object segmentation in an unsupervised learning context. Additionally, it aims to explore various unsupervised learning algorithms in order to integrate them into the existing slot attention module laid out in the original paper: \textit{Guided Slot Attention for Unsupervised Video Object Segmentation}. By introducing object-centric slot attention through guided slots, background and foreground objects can be recognized and separated allowing for a more accurate masking of the most prominent object in a video object sequence.  Especially for crowded and complex foreground and background scenes, performing slot attention on slots in conjunction with extracted features from the given scene can yield accurate object segmentation that is beneficial for ongoing research and technological application in object detection, tracking, and segmentation.
 
 \section*{References}
-
+\renewcommand{\labelenumi}{[\arabic{enumi}]}
 \bibliographystyle{icml2025}
-Lee, M., Cho, S., Lee, D., Park, C., Lee, J., \& Lee, S. (2023). Guided Slot Attention for Unsupervised Video Object Segmentation. ArXiv. https://arxiv.org/abs/2303.08314
+\begin{enumerate}
+\item Lee, M., Cho, S., Lee, D., Park, C., Lee, J., \& Lee, S. (2023). Guided Slot Attention for Unsupervised Video Object Segmentation. ArXiv. https://arxiv.org/abs/2303.08314
 
-Tafasca, S., Gupta, A., \& Odobez, J. (2023). Sharingan: A Transformer-based Architecture for Gaze Following. ArXiv. https://arxiv.org/abs/2310.00816
+\item Tafasca, S., Gupta, A., \& Odobez, J. (2023). Sharingan: A Transformer-based Architecture for Gaze Following. ArXiv. https://arxiv.org/abs/2310.00816
 
-Agro, B., Sykora, Q., Casas, S., \& Urtasun, R. (2023). Implicit Occupancy Flow Fields for Perception and Prediction in Self-Driving. ArXiv. https://arxiv.org/abs/2308.01471
+\item Agro, B., Sykora, Q., Casas, S., \& Urtasun, R. (2023). Implicit Occupancy Flow Fields for Perception and Prediction in Self-Driving. ArXiv. https://arxiv.org/abs/2308.01471
 
-Liu, D., Yu, D., Wang, C., \& Zhou, P. (2020). F2Net: Learning to Focus on the Foreground for Unsupervised Video Object Segmentation. ArXiv. https://arxiv.org/abs/2012.02534
+\item Liu, D., Yu, D., Wang, C., \& Zhou, P. (2020). F2Net: Learning to Focus on the Foreground for Unsupervised Video Object Segmentation. ArXiv. https://arxiv.org/abs/2012.02534
 
-Locatello, F., Weissenborn, D., Unterthiner, T., Mahendran, A., Heigold, G., Uszkoreit, J., Dosovitskiy, A., \& Kipf, T. (2020). Object-Centric Learning with Slot Attention. ArXiv. https://arxiv.org/abs/2006.15055
+\item Locatello, F., Weissenborn, D., Unterthiner, T., Mahendran, A., Heigold, G., Uszkoreit, J., Dosovitskiy, A., \& Kipf, T. (2020). Object-Centric Learning with Slot Attention. ArXiv. https://arxiv.org/abs/2006.15055
 
+\item Qiu, S. (2018). Global Weighted Average Pooling Bridges Pixel-level Localization and Image-level Classification. ArXiv. https://arxiv.org/abs/1809.08264
+
+\item Lin, Tsung-Yi, et al. “Feature Pyramid Networks for Object Detection.” arXiv.Org, 19 Apr. 2017, arxiv.org/abs/1612.03144. 
+\end{enumerate}
 \end{document}
