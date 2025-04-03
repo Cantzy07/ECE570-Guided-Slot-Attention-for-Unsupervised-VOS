@@ -1,4 +1,4 @@
-from models.FAT import FAT
+from models.feature_aggregation_transformer import FAT
 import torch
 
 # Modified forward method to debug shapes at each step

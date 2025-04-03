@@ -1,11 +1,11 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parameter as Parameter
-import numpy as np
+from models.feature_aggregation_transformer import FAT
+from models.Slot_Attention import GuidedSlotAttention
 from transformers import SegformerForImageClassification, SegformerImageProcessor
-from sklearn.cluster import KMeans
-import torch
-from FAT import FAT
+
 
 def weight_init(module):
     for n, m in module.named_children():
@@ -38,12 +38,13 @@ class Model(nn.Module):
     def __init__(self):  
         super(Model, self).__init__()  
         self.rgb_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
-        self.flow_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
+        # self.flow_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
         self.processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b2")
+        self.slot_generator = SlotGenerator(in_channels=64, slot_num=2)
         self.FAT_features = FAT(local_in=128, global_in=16)
-        self.FAT_slots = FAT(local_in=128, global_in=16)
+        self.gsa = GuidedSlotAttention()
 
-    def encode_image(self, image):
+    def encode_target(self, image):
         # Preprocess the image
         inputs = self.processor(images=image, return_tensors="pt")
 
@@ -60,17 +61,87 @@ class Model(nn.Module):
 
         return stage_1, stage_2, stage_3, stage_4
     
-    def generate_slots(self, image):
-        stage_1, stage_2, stage_3, stage_4 = self.encode_image(image)
+    def encode_references(self, references):
+        # Prepare a list to hold the features from each image
+        feature_maps = []
 
-        slot_generator = SlotGenerator(in_channels=64, slot_num=2)
+        # Loop through each image
+        for image in references:
+            # Preprocess the image
+            inputs = self.processor(images=image, return_tensors="pt")
 
-        slots = slot_generator(stage_1)
+            # Forward pass through the model
+            with torch.no_grad():
+                outputs = self.rgb_encoder(**inputs, output_hidden_states=True)
 
-        return slots
+            # Outputs contain multi-scale feature maps
+            stage_1 = outputs.hidden_states[0]  # Local (1/4 size)
+            stage_2 = outputs.hidden_states[1]  # Local (1/8 size)
+            stage_3 = outputs.hidden_states[2]  # Global (1/16 size)
+            stage_4 = outputs.hidden_states[3]  # Global (1/32 size)
+
+            # Apply channel-wise softmax: softmax across the channel dimension (dim=0)
+            softmax_feature_map = F.softmax(stage_4, dim=1)  # Softmax across channels
+            
+            # Reduce the channels to a single channel by summing them
+            mj_gt = softmax_feature_map.sum(dim=1, keepdim=True)  # Sum over channels, keeping the spatial dimensions
+
+            # You can choose which stage to use, here I am using stage_1 (local, 1/4 size)
+            feature_maps.append(mj_gt)  # Add the feature map to the list
+
+        # Stack the feature maps along the channel dimension
+        # Assuming feature_maps is a list of tensors with shape [B, C, H, W]
+        combined_features = torch.cat(feature_maps, dim=1)  # Concatenate along the channel dimension
+
+        print(f"Combined Features Shape: {combined_features.shape}")
+
+        return combined_features
     
-    # def forward(self, x):
+    def cosine_similarity_decoding(X_L, P_Sr, P_A):
+        """
+        X_L: Encoder features [B, C, H, W] torch.Size([1, 320, 32, 32])
+        P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
+        P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
+        """
+        # Flatten spatial dimensions
+        X_flat = X_L.flatten(2).transpose(1, 2)  # [B, H*W, C]
+        P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
+        P_A = P_A.flatten(2).transpose(1, 2) # [B, H*W, C]
+        
+        # Compute cosine similarity
+        CM_a = F.cosine_similarity(
+            X_flat.unsqueeze(2),  # [B, H*W, 1, C]
+            P_A.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
+            dim=-1
+        )  # [B, H*W, num_slots]
 
+        CM_s = F.cosine_similarity(
+            X_flat.unsqueeze(2),  # [B, H*W, 1, C]
+            P_Sr.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
+            dim=-1
+        )  # [B, H*W, num_slots]
+        
+        # Reshape to spatial dimensions
+        similarity_map_a = CM_a.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
+        similarity_map_a = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+
+        similarity_map_s = CM_s.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
+        similarity_map_s = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+        
+        # Softmax to get attention masks
+        masks = torch.cat([similarity_map_a, similarity_map_s])
+        
+        return masks
+    
+    def forward(self, x_target, x_references):
+        # using stage_1 as local features, stage_3 as X_L encoder features, stage_4 as global features
+        stage_1, stage_2, stage_3, stage_4 = self.encode_target(x_target)
+        references_features = self.encode_references(x_references)
+        slots = self.slot_generator(stage_1)
+        aggregated_features = self.FAT_features(stage_1, references_features)
+        refined_slots = self.gsa(aggregated_features, slots)
+        x = self.cosine_similarity_decoding(stage_3, refined_slots, aggregated_features)
+        return x
 
 class SlotGenerator(nn.Module):
     def __init__(self, in_channels, slot_num):

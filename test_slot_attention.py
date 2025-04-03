@@ -1,4 +1,4 @@
-from models.FAT import FAT
+from models.feature_aggregation_transformer import FAT
 from models.Slot_Attention import GuidedSlotAttention
 from test_slotgenerator import generate_slots
 import torch
@@ -25,9 +25,10 @@ if __name__ == "__main__":
     x_g = torch.randn(1, batch_size, 16, 16)  # [batch_size, batch_size, 16, 16]
 
     # Initialize the model
-    fat = FAT(local_in=128, global_in=16)
     gsa = GuidedSlotAttention()
-    slotatt_output = gsa(fat, slots)
+    fat = FAT(local_in=128, global_in=16)
+    fat_output = fat(x_l, x_g)
+    slotatt_output = gsa(fat_output, slots)
 
     print("gsa shape", slotatt_output.shape)
     
