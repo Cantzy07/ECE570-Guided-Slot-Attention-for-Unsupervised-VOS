@@ -21,29 +21,24 @@ class GuidedSlotAttention(nn.Module):
     def forward(self, PA, PS_init):
         # PA: [1, 1, 16, 16] -> [1, 256]
         PA_flat = PA.view(1, -1).unsqueeze(0)  # [1, 1, 256]
-        print("pa_flat", PA_flat.shape)
         
         # Initialize slots: [1, 2, 1, 1] -> [1, 2, embed_dim]
         slots = self.slot_proj(PS_init.view(1, 2, 1)).squeeze(-1)  # [1, 2, embed_dim]
-        print("slots", slots.shape)
 
         for _ in range(self.num_iters):
             # Step 1: KNN Filtering (select N nearest features per slot)
             knn_indices = []
             for slot in slots[0]:  # For each slot (2 total)
                 dists = torch.norm(PA_flat.transpose(1, 2) - slot.unsqueeze(0).unsqueeze(-1), dim=-1)  # L2 distance
-                print("dists", dists.shape)
                 _, indices = torch.topk(dists, self.num_knn, largest=False)
                 knn_indices.append(indices)
             knn_indices = torch.stack(knn_indices)  # [2, N]
             knn_indices = knn_indices.squeeze(1)
-            print("knn_indices", knn_indices.shape)
 
             # Step 2: FAT Attention (slots attend to KNN-filtered features)
             PA_flat = PA_flat.view(1, 256, 1)
             knn_features = PA_flat[:, knn_indices]  # [1, 2, N, embed_dim]
             knn_features = knn_features.view(1, 2 * self.num_knn, -1)  # [1, 2*N, embed_dim]
-            print("knn features pre expansion", knn_features.shape)
             # 1. Expand knn_features to match slot dimension
             knn_features = knn_features.expand(-1, -1, 256)
             
@@ -51,14 +46,11 @@ class GuidedSlotAttention(nn.Module):
             # 2. Reshape for parallel processing
             knn_features = knn_features.permute(1, 0, 2)
             knn_features = knn_features.expand(-1, 2, -1)
-            print("knn_features", knn_features.shape)
-            print("slots", slots.shape)
             slots, _ = self.fat(
                 query=slots,
                 key=knn_features,
                 value=knn_features
             )  # [2, 1, embed_dim]
-            print("slots after attention", slots.shape)
 
         return slots
     

@@ -43,6 +43,7 @@ class Model(nn.Module):
         self.slot_generator = SlotGenerator(in_channels=64, slot_num=2)
         self.FAT_features = FAT(local_in=128, global_in=16)
         self.gsa = GuidedSlotAttention()
+        self.encoder_projection = nn.Conv2d(320, 256, kernel_size=1)
 
     def encode_target(self, image):
         # Preprocess the image
@@ -97,16 +98,21 @@ class Model(nn.Module):
 
         return combined_features
     
-    def cosine_similarity_decoding(X_L, P_Sr, P_A):
+    def cosine_similarity_decoding(self, X_L, P_Sr, P_A):
         """
         X_L: Encoder features [B, C, H, W] torch.Size([1, 320, 32, 32])
         P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
         P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
         """
         # Flatten spatial dimensions
+        X_L = self.encoder_projection(X_L)
         X_flat = X_L.flatten(2).transpose(1, 2)  # [B, H*W, C]
         P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
+        P_Srf = P_Sr[:, :, 0]
+        P_Srb = P_Sr[:, :, 1]
         P_A = P_A.flatten(2).transpose(1, 2) # [B, H*W, C]
+
+        print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape)
         
         # Compute cosine similarity
         CM_a = F.cosine_similarity(
@@ -115,9 +121,15 @@ class Model(nn.Module):
             dim=-1
         )  # [B, H*W, num_slots]
 
-        CM_s = F.cosine_similarity(
+        CM_sf = F.cosine_similarity(
             X_flat.unsqueeze(2),  # [B, H*W, 1, C]
-            P_Sr.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
+            P_Srf.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
+            dim=-1
+        )  # [B, H*W, num_slots]
+
+        CM_sb = F.cosine_similarity(
+            X_flat.unsqueeze(2),  # [B, H*W, 1, C]
+            P_Srb.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
             dim=-1
         )  # [B, H*W, num_slots]
         
@@ -125,11 +137,20 @@ class Model(nn.Module):
         similarity_map_a = CM_a.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
         similarity_map_a = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
 
-        similarity_map_s = CM_s.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
-        similarity_map_s = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+        similarity_map_sf = CM_sf.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
+        similarity_map_sf = similarity_map_sf.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+
+        similarity_map_sb = CM_sb.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
+        similarity_map_sb = similarity_map_sb.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+
+        # Combine aggregator, foreground, background
+        combined_sim_map = torch.cat(
+            [similarity_map_a, similarity_map_sf, similarity_map_sb],
+            dim=1
+        )  # [B, 3, H, W]
         
-        # Softmax to get attention masks
-        masks = torch.cat([similarity_map_a, similarity_map_s])
+        # Turn them into a probability distribution across the 3 “slots” for each pixel
+        masks = F.softmax(combined_sim_map, dim=1)  # [B, 3, H, W]
         
         return masks
     
