@@ -1,18 +1,11 @@
 import argparse
 import os
-from PIL import Image
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 from load_DAVIS16 import get_davis_dataloader
-
 # Import the model
 from models.model import Model 
-
-
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,10 +15,6 @@ def train(args):
     train_loader = get_davis_dataloader(
         root_dir="datasets/DAVIS",
         subset="train",
-    )
-    test_loader = get_davis_dataloader(
-        root_dir="datasets/DAVIS",
-        subset="val",
     )
     
     # Instantiate the model and send it to the device.
@@ -68,6 +57,56 @@ def train(args):
         checkpoint_path = os.path.join(args.checkpoint_dir, f"model_epoch_{epoch+1}.pth")
         torch.save(model.state_dict(), checkpoint_path)
         print(f"Checkpoint saved to {checkpoint_path}")
+
+def test(args):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Create the test DataLoader from the DAVIS validation split.
+    test_loader = get_davis_dataloader(
+        root_dir="datasets/DAVIS",
+        subset="val",
+    )
+    
+    # Instantiate the model and move to the device.
+    model = Model().to(device)
+    
+    # Load the checkpoint if a checkpoint path is provided.
+    # Make sure to add '--checkpoint_path' as an argument when running the test.
+    if args.checkpoint_path is not None and os.path.exists(args.checkpoint_path):
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint)
+        print(f"Loaded checkpoint from {args.checkpoint_path}")
+    else:
+        print("No checkpoint provided or found, evaluating untrained model.")
+    
+    model.eval()  # set the model to evaluation mode
+    
+    total_correct = 0
+    total_pixels = 0
+
+    with torch.no_grad():
+        for target_image, reference_images, mask in test_loader:
+            # Transfer the ground-truth mask to device.
+            mask = mask.to(device)
+            # In our training function we add an extra batch dimension to the mask
+            # since our model expects [B, H, W]; adjust accordingly.
+            mask = mask.unsqueeze(0)  # shape: [1, H, W]
+            
+            # Forward pass: our dataloader returns lists with one element.
+            # Pass the first element of the target and reference image lists.
+            output = model(target_image[0], reference_images[0])
+            # The output shape is assumed to be [1, num_classes, H, W]
+            
+            # Get the predicted class per pixel.
+            predicted = torch.argmax(output, dim=1)  # shape: [1, H, W]
+            
+            # Calculate the number of correctly predicted pixels.
+            correct = (predicted == mask).sum().item()
+            total_correct += correct
+            total_pixels += mask.numel()
+    
+    pixel_accuracy = total_correct / total_pixels if total_pixels > 0 else 0
+    print(f"Test Pixel Accuracy: {pixel_accuracy * 100:.2f}%")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the segmentation model")
