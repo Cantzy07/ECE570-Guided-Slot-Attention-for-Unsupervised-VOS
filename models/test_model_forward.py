@@ -1,4 +1,4 @@
-from models.model import Model
+from model import Model
 import torch
 
 import torch
@@ -101,3 +101,5 @@ if __name__ == "__main__":
     model = Model()
     mask = model(target, references)
     print("mask shape", mask.shape)
+
+    # mask shape torch.Size([1, 258, 32, 32])

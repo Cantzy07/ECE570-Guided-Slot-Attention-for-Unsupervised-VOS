@@ -1,5 +1,5 @@
-from models.feature_aggregation_transformer import FAT
-from models.Slot_Attention import GuidedSlotAttention
+from feature_aggregation_transformer import FAT
+from Slot_Attention import GuidedSlotAttention
 from test_slotgenerator import generate_slots
 import torch
 from PIL import Image

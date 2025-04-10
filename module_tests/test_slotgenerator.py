@@ -1,4 +1,4 @@
-from models.model import SlotGenerator
+from model import SlotGenerator
 from test_encoder import encode_image
 import torch.nn as nn
 from PIL import Image

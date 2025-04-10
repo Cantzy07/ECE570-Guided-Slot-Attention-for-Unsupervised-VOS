@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parameter as Parameter
-from models.feature_aggregation_transformer import FAT
-from models.Slot_Attention import GuidedSlotAttention
+from feature_aggregation_transformer import FAT
+from Slot_Attention import GuidedSlotAttention
 from transformers import SegformerForImageClassification, SegformerImageProcessor
 
 
@@ -43,7 +43,7 @@ class Model(nn.Module):
         self.slot_generator = SlotGenerator(in_channels=64, slot_num=2)
         self.FAT_features = FAT(local_in=128, global_in=16)
         self.gsa = GuidedSlotAttention()
-        self.encoder_projection = nn.Conv2d(320, 256, kernel_size=1)
+        self.encoder_projection = nn.Conv2d(64, 256, kernel_size=1)
 
     def encode_target(self, image):
         # Preprocess the image
@@ -110,14 +110,14 @@ class Model(nn.Module):
         P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
         P_Srf = P_Sr[:, :, 0]
         P_Srb = P_Sr[:, :, 1]
-        P_A = P_A.flatten(2).transpose(1, 2) # [B, H*W, C]
+        P_A = P_A.flatten(2).transpose(1, 2).squeeze(-1) # [B, H*W]
 
         print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape)
         
         # Compute cosine similarity
         CM_a = F.cosine_similarity(
             X_flat.unsqueeze(2),  # [B, H*W, 1, C]
-            P_A.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
+            P_A.unsqueeze(1),    # [B, 1, H*W]
             dim=-1
         )  # [B, H*W, num_slots]
 
@@ -156,12 +156,24 @@ class Model(nn.Module):
     
     def forward(self, x_target, x_references):
         # using stage_1 as local features, stage_3 as X_L encoder features, stage_4 as global features
+        # Stage 1 (Local) Shape: torch.Size([1, 64, 128, 128])
+        # Stage 2 (Local) Shape: torch.Size([1, 128, 64, 64])
+        # Stage 3 (Global) Shape: torch.Size([1, 320, 32, 32])
+        # Stage 4 (Global) Shape: torch.Size([1, 512, 16, 16])
         stage_1, stage_2, stage_3, stage_4 = self.encode_target(x_target)
         references_features = self.encode_references(x_references)
+
+        # Slot Output Shape: torch.Size([1, 2, 1, 1])
         slots = self.slot_generator(stage_1)
+
+        # Output shape: torch.Size([1, 1, 16, 16])
         aggregated_features = self.FAT_features(stage_1, references_features)
+
+        # gsa shape torch.Size([1, 2, 256])
         refined_slots = self.gsa(aggregated_features, slots)
-        x = self.cosine_similarity_decoding(stage_3, refined_slots, aggregated_features)
+
+        # mask shape torch.Size([1, 3, 128, 128])
+        x = self.cosine_similarity_decoding(stage_1, refined_slots, aggregated_features)
         return x
 
 class SlotGenerator(nn.Module):

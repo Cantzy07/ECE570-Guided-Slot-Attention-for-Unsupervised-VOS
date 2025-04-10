@@ -90,7 +90,7 @@ def test_get_davis_dataset():
         resolution="480p",
         transform=transform,
         target_transform=target_transform,
-        selected_titles=["bear"],  # Remove or change as needed.
+        selected_titles=None,  # Remove or change as needed.
         batch_size=1,             # Using batch_size=1 to keep the reference image list intact.
         shuffle=False,
         num_workers=0             # Set to 0 for testing to avoid multiprocessing complications.
@@ -115,9 +115,6 @@ def test_get_davis_dataset():
         # Optionally, visualize the sample.
         # Squeeze the batch dimension from the target image and annotation.
         display_sample(target_image.squeeze(0), reference_images, target_annotation.squeeze(0))
-
-        # Only process one batch for this test.
-        break
 
 if __name__ == '__main__':
     test_get_davis_dataset()
