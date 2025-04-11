@@ -10,6 +10,7 @@ def encode_image(image):
     processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b2")
     # Preprocess the image
     inputs = processor(images=image, return_tensors="pt")
+    print("input shape", inputs.shape)
 
     # Forward pass through the model
     with torch.no_grad():

@@ -38,7 +38,7 @@ def train(args):
             # Forward pass.
             # Since batch_size=1, target_image and reference_images are lists of one element.
             # We pass the first (and only) element in each.
-            output = model(target_image[0], reference_images[0])
+            output = model(target_image, reference_images)
             # Output is expected to have shape [1, num_classes, H_out, W_out]
             
             loss = criterion(output, mask)
@@ -87,14 +87,14 @@ def test(args):
     with torch.no_grad():
         for target_image, reference_images, mask in test_loader:
             # Transfer the ground-truth mask to device.
-            mask = mask.to(device)
+            mask = mask.to(device).long()
             # In our training function we add an extra batch dimension to the mask
             # since our model expects [B, H, W]; adjust accordingly.
             mask = mask.unsqueeze(0)  # shape: [1, H, W]
             
             # Forward pass: our dataloader returns lists with one element.
             # Pass the first element of the target and reference image lists.
-            output = model(target_image[0], reference_images[0])
+            output = model(target_image, reference_images)
             # The output shape is assumed to be [1, num_classes, H, W]
             
             # Get the predicted class per pixel.

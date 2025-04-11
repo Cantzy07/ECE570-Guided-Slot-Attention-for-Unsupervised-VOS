@@ -5,6 +5,7 @@ import torch.nn.parameter as Parameter
 from feature_aggregation_transformer import FAT
 from Slot_Attention import GuidedSlotAttention
 from transformers import SegformerForImageClassification, SegformerImageProcessor
+from torchvision import transforms
 
 
 def weight_init(module):
@@ -43,7 +44,7 @@ class Model(nn.Module):
         self.slot_generator = SlotGenerator(in_channels=64, slot_num=2)
         self.FAT_features = FAT(local_in=128, global_in=16)
         self.gsa = GuidedSlotAttention()
-        self.encoder_projection = nn.Conv2d(64, 256, kernel_size=1)
+        self.encoder_projection = nn.Conv2d(3, 256, kernel_size=1)
 
     def encode_target(self, image):
         # Preprocess the image
@@ -100,19 +101,23 @@ class Model(nn.Module):
     
     def cosine_similarity_decoding(self, X_L, P_Sr, P_A):
         """
-        X_L: Encoder features [B, C, H, W] torch.Size([1, 320, 32, 32])
+        X_L: Original Image [B, C, H, W] torch.Size([3, 1080, 1920])
         P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
         P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
         """
         # Flatten spatial dimensions
+        to_tensor = transforms.ToTensor()
+        X_L = to_tensor(X_L).unsqueeze(0)
         X_L = self.encoder_projection(X_L)
+        X_L = F.adaptive_avg_pool2d(X_L, output_size=(64, 64))
         X_flat = X_L.flatten(2).transpose(1, 2)  # [B, H*W, C]
+        
         P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
         P_Srf = P_Sr[:, :, 0]
         P_Srb = P_Sr[:, :, 1]
         P_A = P_A.flatten(2).transpose(1, 2).squeeze(-1) # [B, H*W]
 
-        print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape)
+        # print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape)
         
         # Compute cosine similarity
         CM_a = F.cosine_similarity(
@@ -151,7 +156,11 @@ class Model(nn.Module):
         
         # Turn them into a probability distribution across the 3 “slots” for each pixel
         masks = F.softmax(combined_sim_map, dim=1)  # [B, 3, H, W]
-        
+        # print("mask shape", masks.shape)
+
+        # Upsample the mask to the original target image resolution.
+        masks = F.interpolate(masks, size=(1080, 1920), mode='bilinear', align_corners=False)
+        # print("upsampled mask", masks.shape)
         return masks
     
     def forward(self, x_target, x_references):
@@ -173,7 +182,7 @@ class Model(nn.Module):
         refined_slots = self.gsa(aggregated_features, slots)
 
         # mask shape torch.Size([1, 3, 128, 128])
-        x = self.cosine_similarity_decoding(stage_1, refined_slots, aggregated_features)
+        x = self.cosine_similarity_decoding(x_target, refined_slots, aggregated_features)
         return x
 
 class SlotGenerator(nn.Module):

@@ -56,7 +56,7 @@
 \begin{document}
 
 \twocolumn[
-\icmltitle{Investigating Applications of Computer Vision in Real World Scenarios}
+\icmltitle{Re-Implementing Guided Slot Attention for Video Object Segmentation}
 
 % It is OKAY to include author information, even for blind
 % submissions: the style file will automatically remove it for you
@@ -109,54 +109,124 @@ This guided approach for the slots enables more effective disentanglement of for
 \section*{Problem Definition}
 The problem addressed in this paper is the need for a video object segmentation model that has more robust foreground and background separation. This is important for VOS to be applied to real world situations where there is foreground and background noise in the scene that could possibly affect object identification and segmentation. While state of the art semi-supervised methods for VOS exist, unsupervised methods without a starting mask or annotations of objects in the scene make unsupervised VOS a difficult task. The task of re-implementing GSANet requires consideration of three crucial issues: (1) Making sure the proper latent representation for local and global features from the target and reference images are chosen from the encoder, (2) making sure to properly design a feature aggregation transformer that is able to concatenate and weight the most important features from the local and global extractor, and (3) designing the slot attention module such that the foreground and background slots gain proper enrichment and refinement from the aggregated features and develop robust discrimination capabilities for the foreground and background. This re-implementation aims to recreate as well as simplify the ideas put forth in the original paper in order to prove that slots are necessary in unsupervised VOS for complex and noisy scenes.
 
-
 \section*{Related Works}
 \textbf{F2Net: Learning to Focus on the Foreground for Unsupervised Video Object Segmentation}
-F2Net introduces a novel approach for unsupervised video object segmentation by explicitly learning to concentrate on the foreground. In this work, the authors design a deep neural architecture that leverages attention mechanisms to disentangle the foreground object from cluttered background information. By integrating both appearance and motion cues, F2Net dynamically focuses on regions that are most likely to correspond to the primary object in a video. The network employs a foreground-focused module that refines feature representations, enabling the segmentation process to be robust even in challenging scenarios such as occlusions or rapidly changing scenes. Experimental results on standard benchmarks demonstrate that F2Net outperforms several state-of-the-art unsupervised methods, achieving higher segmentation accuracy while maintaining computational efficiency. This work contributes to the field by reducing the dependency on manual annotations and highlighting the importance of foreground priors in unsupervised video segmentation tasks.
+
+F2Net introduces a novel approach for unsupervised video object segmentation by explicitly learning to concentrate on the foreground. In this work, the authors design a deep neural architecture that leverages attention mechanisms to disentangle the foreground object from cluttered background information. By integrating both appearance and motion cues, F2Net dynamically focuses on regions that are most likely to correspond to the primary object in a video. The network employs a foreground-focused module that refines feature representations, enabling the segmentation process to be robust even in challenging scenarios such as occlusions or rapidly changing scenes. Experimental results on standard benchmarks demonstrate that F2Net outperforms several state-of-the-art unsupervised methods, achieving higher segmentation accuracy while maintaining computational efficiency. This work contributes to the field by reducing the dependency on manual annotations and highlighting the importance of foreground priors in unsupervised video segmentation tasks.\\
 
 \textbf{Object-Centric Learning with Slot Attention}
-This paper introduces a novel neural network module called Slot Attention, designed to facilitate unsupervised object-centric representation learning. Slot Attention enables the decomposition of visual input into separate representations, or "slots," each corresponding to distinct objects in the scene. Unlike previous approaches, this method iteratively refines object representations through a competitive attention mechanism, effectively segregating and modeling multiple objects simultaneously without explicit supervision. Experimental results demonstrate that Slot Attention significantly improves object discovery and reconstruction tasks, showcasing superior generalization and interpretability compared to existing methods. This work highlights the effectiveness of iterative attention-based modules in achieving object-centric learning and lays the groundwork for future developments in unsupervised scene understanding.
+
+This paper introduces a novel neural network module called Slot Attention, designed to facilitate unsupervised object-centric representation learning. Slot Attention enables the decomposition of visual input into separate representations, or "slots," each corresponding to distinct objects in the scene. Unlike previous approaches, this method iteratively refines object representations through a competitive attention mechanism, effectively segregating and modeling multiple objects simultaneously without explicit supervision. Experimental results demonstrate that Slot Attention significantly improves object discovery and reconstruction tasks, showcasing superior generalization and interpretability compared to existing methods. This work highlights the effectiveness of iterative attention-based modules in achieving object-centric learning and lays the groundwork for future developments in unsupervised scene understanding.\\
 
 \textbf{Feature Pyramid Networks for Object Detection}
-The paper "Feature Pyramid Networks for Object Detection" (FPN) introduces a novel architecture designed to enhance multi-scale object detection performance. FPN addresses the challenge of accurately detecting objects of various scales by building feature pyramids that integrate high-resolution, semantically weak features with low-resolution, semantically strong features. By creating top-down pathways and lateral connections, FPN combines spatial detail and rich semantic information at all pyramid levels. Experiments demonstrate that incorporating FPN significantly boosts detection accuracy across multiple object scales and consistently outperforms traditional single-scale methods on benchmark datasets such as COCO. This work established FPN as a foundational architecture widely adopted in modern object detection and instance segmentation frameworks. Early network layers produce high-resolution feature maps containing detailed spatial information (e.g., edges, textures), essential for precisely localizing objects and essential for local feature extraction from input images. Additionally, deeper layers produce low-resolution but semantically rich feature maps, capturing broader contextual relationships and abstract information (e.g., object identities and relationships) allowing for global feature extraction.
+
+The paper "Feature Pyramid Networks for Object Detection" (FPN) introduces a novel architecture designed to enhance multi-scale object detection performance. FPN addresses the challenge of accurately detecting objects of various scales by building feature pyramids that integrate high-resolution, semantically weak features with low-resolution, semantically strong features. By creating top-down pathways and lateral connections, FPN combines spatial detail and rich semantic information at all pyramid levels. Experiments demonstrate that incorporating FPN significantly boosts detection accuracy across multiple object scales and consistently outperforms traditional single-scale methods on benchmark datasets such as COCO. This work established FPN as a foundational architecture widely adopted in modern object detection and instance segmentation frameworks. Early network layers produce high-resolution feature maps containing detailed spatial information (e.g., edges, textures), essential for precisely localizing objects and essential for local feature extraction from input images. Additionally, deeper layers produce low-resolution but semantically rich feature maps, capturing broader contextual relationships and abstract information (e.g., object identities and relationships) allowing for global feature extraction.\\
 
 \textbf{Global Weighted Average Pooling Bridges Pixel-level Localization and Image-level Classification}
-The paper "Global Weighted Average Pooling Bridges Pixel-level Localization and Image-level Classification" proposes a novel pooling mechanism called Global Weighted Average Pooling (GWAP) to bridge the gap between image-level classification tasks and pixel-level localization capabilities. GWAP assigns spatially varying weights to feature maps, enabling deep convolutional neural networks to emphasize discriminative regions relevant to classification while preserving precise spatial localization. By explicitly modeling the spatial relevance of different image regions, GWAP enhances interpretability and enables better localization performance without requiring additional supervision or extensive modifications to existing network architectures. Experimental evaluations demonstrate that GWAP significantly improves localization accuracy while maintaining or improving classification performance on benchmark datasets. This work contributes a simple yet effective pooling strategy to simultaneously address classification and localization challenges in computer vision.
+
+The paper "Global Weighted Average Pooling Bridges Pixel-level Localization and Image-level Classification" proposes a novel pooling mechanism called Global Weighted Average Pooling (GWAP) to bridge the gap between image-level classification tasks and pixel-level localization capabilities. GWAP assigns spatially varying weights to feature maps, enabling deep convolutional neural networks to emphasize discriminative regions relevant to classification while preserving precise spatial localization. By explicitly modeling the spatial relevance of different image regions, GWAP enhances interpretability and enables better localization performance without requiring additional supervision or extensive modifications to existing network architectures. Experimental evaluations demonstrate that GWAP significantly improves localization accuracy while maintaining or improving classification performance on benchmark datasets. This work contributes a simple yet effective pooling strategy to simultaneously address classification and localization challenges in computer vision.\\
 
 \textbf{Attention is All You Need}
+
 The paper "Attention Is All You Need" introduces the Transformer architecture, a revolutionary neural network design relying entirely on self-attention mechanisms, eliminating recurrent and convolutional structures traditionally used in sequence modeling. The authors propose a novel multi-head self-attention mechanism that enables the model to directly capture global dependencies between input elements in parallel, significantly improving computational efficiency and performance. Transformers achieve state-of-the-art results in machine translation tasks while also simplifying training due to their parallelizable nature. This landmark contribution laid the foundation for a broad range of subsequent developments in natural language processing, computer vision, and beyond, highlighting the effectiveness and generality of attention mechanisms in deep learning.
 
 \section*{Methodology}
 \textbf{Overview of Guided Slot Attention}
 The main goal of this re-implementation is to validate the improved object segmentation capabilities of an architecture using foreground and background slots in tandem with features extracted from a target image. The breakdown of the architecture is as follows:
+
 \textbf{1.	A target image and reference images are passed into the MiT-b2 encoder which extracts local features from the target image at its early layers and extracts global features from the reference images at the deeper layers.}
+
 \textbf{2.	Local features are passed into a slot generator which creates foreground and background slots.}
+
 \textbf{3.	Local and global features are sent into a feature aggregation transformer which performs cross attention, multi-headed attention and attentive pooling to combine important features from the local and global features.}
+
 \textbf{4.	Slot attention is performed by performing knn filtering with the aggregated features and the generated foreground/background slots in order to produce slots that are refined on the aggregated features.}
+
 \textbf{5.	Lastly, using an original encoding from the target image, the aggregated features, and the refined slots, a mask is generated using a cosine similarity style decoding method.}
 
 \textbf{Local/Global Encoder}
+
 The encoder for this architecture uses the MiT-b2 backbone. A target image is fed into the RGB encoder and outputs 4 hidden states of [64, 128, 128], [128, 64, 64],  [320, 32, 32], [512, 16, 16] where the first dimension is the channel size, the second is the height, and the third is the width of the image. The first hidden state is used as the local features due to being the earliest hidden layer and contains the most fine-grained details. 
-For the global features, several reference images are fed into the same encoder and the last hidden state is used as the global features due to having more generalized latent representations of the reference images.
+For the global features, several reference images are fed into the same encoder and the last hidden state is used as the global features due to having more generalized latent representations of the reference images.\\
 
 \textbf{Slot Generator}
-The slot generator takes the local feature produced by the RGB encoder and passes it through a 1x1 convolutional layer in order to compress the channel size down to 2 (one foreground slot/one background slot). After this a pixel-wise SoftMax is performed on the tensor before being pooled.
+
+The slot generator takes the local feature produced by the RGB encoder and passes it through a 1x1 convolutional layer in order to compress the channel size down to $N_s$ where $N_s$ is the number of slots (1 for foreground and 1 background slot), and X is the input image. After this a pixel-wise SoftMax is performed on the tensor before being pooled. 
+
+\begin{align}
+    M_{S(x,y)}^{i} &= \frac{e^{X_{S(x,y)}^{i}}}{\sum_{i=1}^{N_s} e^{X_{S(x,y)}^{i}}}
+\end{align}\\
 
 \textbf{Feature Aggregation Transformer (FAT)}
-The feature aggregation transformer aims to generate useful features by using the encoded local and global features. The transformer includes a standard attention structure with queries, keys, and values in order to perform self attention on the features. The transformer first flattens and reshapes the local and global features using a linear layer to a given embedded dimension so that they are compatible for matrix operations together. Then the global features are passed through a attentive pooling and cross attention is performed between the local and global features. Self-attention is then performed on the output of the cross attention using the standard attention structure mentioned previously. Finally, this output is passed through a sequential block with a convolutional layer and ReLU activation.
+
+The feature aggregation transformer aims to generate useful features by using the encoded local and global features. The transformer includes a standard attention structure with queries, keys, and values in order to perform self attention on the features. The transformer first flattens and reshapes the local and global features using a linear layer to a given embedded dimension so that they are compatible for matrix operations together. Then the global features are passed through a attentive pooling and cross attention is performed between the local and global features. Self-attention is then performed on the output of the cross attention using the standard attention structure mentioned previously. Finally, this output is passed through a sequential block with a convolutional layer and ReLU activation.\\
 
 \textbf{Slot Attention}
-The slot attention module takes in the aggregated features and the generated slots as input. KNN filtering is then performed by selecting the N nearest features per slot for the foreground and background slots. The slots then attend to the selected foreground and background features through a multi-headed attention layer in order to develop a refined foreground and background slots.
+
+The slot attention module takes in the aggregated features and the generated slots as input. KNN filtering is then performed by selecting the N nearest features per slot for the foreground and background slots. The slots then attend to the selected foreground and background features through a multi-headed attention layer in order to develop a refined foreground and background slots.\\
 
 \textbf{Decoder}
-The decoder accepts the aggregated features, refined slots, and the third hidden layer of the original target image encoding. Cosine similarity is calculated between the aggregated features and the original encoding to produce a tensor CM_a, the original encoding and the foreground slot to produce CM_sf, and the original encoding and the background slot to produce CM_sb. These cosine similarities are then reshaped and concatenated channel-wise before being put into a softmax operation to produce a mask for the target image. 
+
+The decoder accepts the aggregated features, refined slots, and the third hidden layer of the original target image encoding. Cosine similarity is calculated between the aggregated features and the original encoding to produce a tensor $CM_a$, the original encoding and the foreground slot to produce $CM_{sf}$, and the original encoding and the background slot to produce $CM_{sb}$. These cosine similarities are then reshaped and concatenated channel-wise before being put into a softmax operation to produce a mask for the target image. The cosine similarity performed is as shown below where $CM_a$ and $CM_{S_r}$ are the calculated cosine similarities, $X_L$ is the encoding from the original target image, $P_A^m$ is the aggregated feature tensor, and $P_{S_r}$ are the foreground and background slots with $i$ denoting the slot.
+
+\begin{align}
+\mathrm{CM}_A(x,y)
+=
+\left\{
+  \frac{X_L(x,y) \cdot \mathbf{P}_A^m}
+       {\|X_L(x,y)\|\;\|\mathbf{P}_A^m\|}
+\right\}_{m}.
+\end{align}
+
+\begin{align}
+\mathrm{CM}_S_r(x,y)
+=
+\left\{
+  \frac{X_L(x,y) \cdot \mathbf{P}_S_r^i}
+       {\|X_L(x,y)\|\;\|\mathbf{P}_S_r^i\|}
+\right\}_{m}.
+\end{align}
 
 \section*{Experimental Results}
+
+\newpage
+\begin{table*}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l|c|c|c|c|c|c|ccc}
+\hline
+\textbf{Method} & \textbf{Publication} & \textbf{backbone} & \textbf{Resolution} & \textbf{OF} & \textbf{PP} & \textbf{FPS} & $\mathcal{G_M}$ & $\mathcal{J_M}$ & $\mathcal{F_M}$ \\ \hline
+MATNet \cite{38} & AAAI'20 & ResNet101 & 473$\times$473 & \checkmark & & 20.0 & 81.6 & 82.4 & 80.7 \\
+WCS-Net \cite{36} & ECCV'20 & EfficientNetV2 & 320$\times$320 & \checkmark & & 33.3 & 81.5 & 82.2 & 80.7 \\
+DFNet \cite{37} & ECCV'20 & DeepLabV3 & - & & & 3.57 & 82.6 & 83.4 & 81.8 \\
+F2Net \cite{13} & AAAI'21 & DeepLabV3 & 473$\times$473 & \checkmark & & 10.0 & 83.7 & 83.1 & 84.4 \\
+RTNet \cite{22} & CVPR'21 & ResNet101 & 384$\times$672 & \checkmark & & - & 85.2 & 85.6 & 84.7 \\
+FSNet \cite{7} & ICCV'21 & ResNet50 & 352$\times$352 & \checkmark & & 12.5 & 83.3 & 83.4 & 83.1 \\
+TransportNet \cite{35} & ICCV'21 & ResNet101 & 512$\times$512 & \checkmark & & 12.5 & 84.8 & 84.5 & 85.0 \\
+AMC-Net \cite{33} & ICCV'21 & ResNet101 & 384$\times$384 & & & 17.5 & 84.6 & 84.5 & 84.6 \\
+IMP \cite{10} & AAAI'22 & ResNet50 & - & & & 1.79 & 85.3 & 84.5 & 86.0 \\
+HFAN \cite{19} & ECCV'22 & ResNet101 & 512$\times$512 & \checkmark & & 19.0 & 87.0 & 86.7 & 87.3 \\
+HFAN \cite{19} & ECCV'22 & ResNet101 & 512$\times$512 & \checkmark & \checkmark & 2.5 & 88.0 & 87.5 & 88.6 \\
+HFAN \cite{19} & ECCV'22 & MiT-b2 & 512$\times$512 & \checkmark & & 18.4 & 87.6 & 87.0 & 88.1 \\
+HFAN* \cite{19} & ECCV'22 & MiT-b2 & 512$\times$512 & \checkmark & \checkmark & 2.9 & 88.7 & 88.0 & 89.3 \\
+PMN \cite{9} & WACV'23 & VGG16 & 448$\times$256 & \checkmark & & - & 85.9 & 85.4 & 86.4 \\
+TMO \cite{3} & WACV'23 & ResNet101 & 384$\times$384 & \checkmark & & \textbf{43.2} & 86.1 & 85.6 & 86.6 \\
+OAST \cite{24} & ICCV'23 & MiT-b2 & 512$\times$512 & \checkmark & & - & 87.0 & 86.6 & 87.4 \\ \hline
+\textbf{GSANet} & & ResNet101 & 512$\times$512 & \checkmark & & 41.5 & 87.7 & 87.0 & 88.4 \\
+\textbf{GSANet*} & & ResNet101 & 512$\times$512 & \checkmark & \checkmark & 4.5 & 88.4 & 87.9 & 89.0 \\
+\textbf{GSANet} & & MiT-b2 & 512$\times$512 & \checkmark & & 38.2 & 88.2 & 87.4 & 89.0 \\
+\textbf{GSANet*} & & MiT-b2 & 512$\times$512 & \checkmark & \checkmark & 4.1 & \textbf{88.9} & \textbf{88.3} & \textbf{89.6} \\
+\textbf{Re-Implementation} & & MiT-b2 & 480$\times$480 & \checkmark & \checkmark & fps & \textbf{data} & \textbf{data} & \textbf{data} \\ \hline
+\end{tabular}%
+}
+\label{tab:davis16}
+\caption{Comparison of methods on DAVIS-16 dataset.}
+\end{table*}
 
 \section*{Contributions}
 The main inspiration for the implementation of this paper is Guided Slot Attention for Unsupervised Video Object Segmentation (https://arxiv.org/pdf/2303.08314). This original paper implements the same architecture twice for every given target image and its reference images in order to separate RGB and Flow encoding and feature processing. This is to allow for demonstration on images and videos. This re-implementation focuses on images only and thus only uses RGB encoding for feature processing. Additionally, the architecture of the feature aggregation transformer for the original paper is more robust and a simplified version was made for this re-implementation. Another difference between the original architecture and this reimplementation is the simplification of global pooling. The original paper uses a global weighted average pooling to more accurately extract relevant and accurate local and global features as well as foreground/background slots. This re-implementation assumes a reasonably accurate feature extraction from the MiT-b2 encoder and foregoes robust global pooling methods due to having attention modules later in the architecture which will help with retaining important features. Lastly, after performing knn filtering between the aggregated features and the generated slots, the original paper passes this output into another FAT for further attention and feature aggregation. This re-implementation foregoes this step and uses the outputted slots from the attention between aggregated features and generated slots as the refined slots to use for decoding.
 
-\textbf{Conclusion and Future Directions}
+\section*{Conclusion and Future Directions}
 This project proposes an implementation of a guided slot attention mechanism for video object segmentation in an unsupervised learning context. Additionally, it aims to explore various unsupervised learning algorithms in order to integrate them into the existing slot attention module laid out in the original paper: Guided Slot Attention for Unsupervised Video Object Segmentation. By introducing object-centric slot attention through guided slots, background and foreground objects can be recognized and separated allowing for a more accurate masking of the most prominent object in a video object sequence.  Especially for crowded and complex foreground and background scenes, performing slot attention on slots in conjunction with extracted features from the given scene can yield accurate object segmentation that is beneficial for ongoing research and technological application in object detection and tracking.
 Future work could focus on reducing computational complexity and decreasing model size. This could be carried out with more simplified encoding of the image to reduce floating point operations (FLOPs) in order to extract local and global features from the target and reference images. Additionally, finding ways to simplify the feature aggregation processes so that the features will under less matrix operations through smaller feed forward modules and less attention operations. Doing this would allow for faster forward passes through the model and thus increase the frames per second for video input. This would allow the model to be used in real life applications where real time masking is required.
 
