@@ -19,6 +19,15 @@ class Model(nn.Module):
         self.gsa = GuidedSlotAttention().to(device)
         self.encoder_projection = nn.Conv2d(64, 256, kernel_size=1).to(device)
 
+        # Define the refinement CNN block.
+        self.cosine_refine = nn.Sequential(
+            nn.Conv2d(2, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 8, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(8, 3, kernel_size=1)  # output channels: set to the number of segmentation classes (e.g., 3)
+        ).to(device)
+
     def encode_target(self, image):
         # Preprocess the image
         inputs = self.processor(images=image, return_tensors="pt", do_rescale=False)
@@ -74,15 +83,13 @@ class Model(nn.Module):
     
     def cosine_similarity_decoding(self, X_L, P_Sr):
         """
-        X_L: Original Image [B, C, H, W] torch.Size([3, 1080, 1920])
+        X_L: Original Image [B, C, H, W] torch.Size([64, 128, 128])
         P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
         P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
         """
         # Flatten spatial dimensions
         # to_tensor = transforms.ToTensor()
-        target = X_L
         X_L = self.encoder_projection(X_L)
-        X_L = F.adaptive_avg_pool2d(X_L, output_size=(64, 64))
         X_flat = X_L.flatten(2).transpose(1, 2)  # [B, H*W, C]
         
         P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
@@ -117,11 +124,9 @@ class Model(nn.Module):
         
         # Turn them into a probability distribution across the 3 “slots” for each pixel
         masks = F.softmax(combined_sim_map, dim=1)  # [B, 3, H, W]
-        # print("mask shape", masks.shape)
+        masks = self.cosine_refine(masks)
 
-        # Upsample the mask to the original target image resolution.
-        #  masks = F.interpolate(masks, size=(target.shape[-2], target.shape[-1]), mode='bilinear', align_corners=False)
-        # print("upsampled mask", masks.shape)
+        # print("mask", masks.shape)
         return masks
     
     def forward(self, x_target, x_references):
@@ -142,7 +147,7 @@ class Model(nn.Module):
         # gsa shape torch.Size([1, 2, 256])
         refined_slots = self.gsa(aggregated_features, slots)
 
-        # mask shape torch.Size([1, 3, 128, 128])
+        # mask shape torch.Size([1, 3, 64, 64])
         x = self.cosine_similarity_decoding(stage_1, refined_slots)
         return x
 

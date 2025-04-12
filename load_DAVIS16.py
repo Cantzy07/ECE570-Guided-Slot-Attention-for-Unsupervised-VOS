@@ -105,18 +105,42 @@ class DAVISDataset(Dataset):
         
         # Load the target image and annotation.
         target_image = Image.open(target_img_path).convert("RGB")
-        target_anno = Image.open(target_anno_path)
+        try:
+            target_anno = Image.open(target_anno_path)
+        except Exception as e:
+            print(f"Error opening annotation at index {index}: {e}. Skipping sample.")
+            # Recursively skip the sample if there is an error.
+            return self.__getitem__((index + 1) % len(self))
         
+        # Convert annotation to numpy array
+        anno_np = np.array(target_anno, dtype=np.uint8)
+        
+        # Check dimensions of the annotation.
+        # Expected shape is (480, 854); if the annotation has a channel dimension and isn’t single channel, skip.
+        if anno_np.ndim == 3:
+            # If the annotation is of shape (480, 854, C) and C is not 1, skip the sample.
+            if anno_np.shape[2] != 1:
+                print(f"Sample {index} annotation shape {anno_np.shape} is not acceptable. Skipping sample.")
+                return self.__getitem__((index + 1) % len(self))
+            else:
+                # Convert from (480, 854, 1) to (480, 854)
+                anno_np = anno_np[:, :, 0]
+        
+        if anno_np.shape != (480, 854):
+            print(f"Sample {index} annotation shape {anno_np.shape} is not { (480, 854) }. Skipping sample.")
+            return self.__getitem__((index + 1) % len(self))
+        
+        # Transform target_image if a transform is provided.
         if self.transform is not None:
             target_image = self.transform(target_image)
+        
+        # For the annotation, apply the provided transformation if available;
+        # otherwise convert to a PyTorch tensor.
         if self.target_transform is not None:
-            target_anno = self.target_transform(target_anno)
+            target_anno_tensor = self.target_transform(target_anno)
         else:
-            # By default, convert the annotation to a tensor.
-            target_anno = torch.from_numpy(
-                np.array(target_anno, dtype=np.uint8)
-            ).long()
-
+            target_anno_tensor = torch.from_numpy(anno_np).long()
+        
         # Retrieve reference images (all images from the same title except the target).
         reference_images = []
         for i, (img_path, _) in enumerate(self.samples_by_title[title]):
@@ -127,7 +151,7 @@ class DAVISDataset(Dataset):
                 ref_img = self.transform(ref_img)
             reference_images.append(ref_img)
         
-        return target_image, reference_images, target_anno
+        return target_image, reference_images, target_anno_tensor
 
 def get_davis_dataloader(root_dir="datasets/DAVIS",
                          subset="train",

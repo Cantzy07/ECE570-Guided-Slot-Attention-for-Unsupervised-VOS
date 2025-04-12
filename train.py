@@ -20,7 +20,7 @@ def train(args):
         resolution="480p",
         transform=T.ToTensor(),
         target_transform=None,
-        selected_titles=["bear", "boat", "cows"],  # Remove or change as needed.
+        selected_titles=["bear"],  # Remove or change as needed.
         batch_size=1,             # Using batch_size=1 to keep the reference image list intact.
         shuffle=False,
         num_workers=0             # Set to 0 for testing to avoid multiprocessing complications.
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the segmentation model")
     parser.add_argument("--images_dir", type=str, default="data/images", help="Directory containing target images")
     parser.add_argument("--masks_dir", type=str, default="data/masks", help="Directory containing ground truth masks")
-    parser.add_argument("--epochs", type=int, default=2, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--log_interval", type=int, default=10, help="Logging interval (in steps)")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save model checkpoints")
