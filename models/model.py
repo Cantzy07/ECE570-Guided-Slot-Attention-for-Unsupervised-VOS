@@ -2,53 +2,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parameter as Parameter
-from feature_aggregation_transformer import FAT
-from Slot_Attention import GuidedSlotAttention
+from models.feature_aggregation_transformer import FAT
+from models.Slot_Attention import GuidedSlotAttention
 from transformers import SegformerForImageClassification, SegformerImageProcessor
-from torchvision import transforms
 
-
-def weight_init(module):
-    for n, m in module.named_children():
-        if isinstance(m, nn.Conv2d):
-            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-        elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
-            if m.weight is None:
-                pass
-            elif m.bias is not None:
-                nn.init.zeros_(m.bias)
-            else:
-                nn.init.ones_(m.weight)
-        elif isinstance(m, nn.Linear):
-            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-        elif isinstance(m, nn.Sequential):
-            weight_init(m)
-        elif isinstance(m, (nn.ReLU, nn.ReLU6, nn.Upsample, Parameter, nn.AdaptiveAvgPool2d, nn.Sigmoid)):
-            pass
-        else:
-            try:
-                m.initialize()
-            except:
-                pass
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Model(nn.Module):
     def __init__(self):  
         super(Model, self).__init__()  
-        self.rgb_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
+        self.rgb_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2").to(device)
         # self.flow_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
         self.processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b2")
-        self.slot_generator = SlotGenerator(in_channels=64, slot_num=2)
-        self.FAT_features = FAT(local_in=128, global_in=16)
-        self.gsa = GuidedSlotAttention()
-        self.encoder_projection = nn.Conv2d(3, 256, kernel_size=1)
+        self.slot_generator = SlotGenerator(in_channels=64, slot_num=2).to(device)
+        self.FAT_features = FAT(local_in=128, global_in=16).to(device)
+        self.gsa = GuidedSlotAttention().to(device)
+        self.encoder_projection = nn.Conv2d(64, 256, kernel_size=1).to(device)
 
     def encode_target(self, image):
         # Preprocess the image
-        inputs = self.processor(images=image, return_tensors="pt")
+        inputs = self.processor(images=image, return_tensors="pt", do_rescale=False)
+        inputs = {k: v.to(device) for k, v in inputs.items()}  # Move inputs to GPU
 
         # Forward pass through the model
         with torch.no_grad():
@@ -70,7 +44,8 @@ class Model(nn.Module):
         # Loop through each image
         for image in references:
             # Preprocess the image
-            inputs = self.processor(images=image, return_tensors="pt")
+            inputs = self.processor(images=image, return_tensors="pt", do_rescale=False)
+            inputs = {k: v.to(device) for k, v in inputs.items()}  # Move inputs to GPU
 
             # Forward pass through the model
             with torch.no_grad():
@@ -95,19 +70,17 @@ class Model(nn.Module):
         # Assuming feature_maps is a list of tensors with shape [B, C, H, W]
         combined_features = torch.cat(feature_maps, dim=1)  # Concatenate along the channel dimension
 
-        print(f"Combined Features Shape: {combined_features.shape}")
-
         return combined_features
     
-    def cosine_similarity_decoding(self, X_L, P_Sr, P_A):
+    def cosine_similarity_decoding(self, X_L, P_Sr):
         """
         X_L: Original Image [B, C, H, W] torch.Size([3, 1080, 1920])
         P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
         P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
         """
         # Flatten spatial dimensions
-        to_tensor = transforms.ToTensor()
-        X_L = to_tensor(X_L).unsqueeze(0)
+        # to_tensor = transforms.ToTensor()
+        target = X_L
         X_L = self.encoder_projection(X_L)
         X_L = F.adaptive_avg_pool2d(X_L, output_size=(64, 64))
         X_flat = X_L.flatten(2).transpose(1, 2)  # [B, H*W, C]
@@ -115,16 +88,8 @@ class Model(nn.Module):
         P_Sr = P_Sr.transpose(1, 2)  # [B, slot_dim, num_slots]
         P_Srf = P_Sr[:, :, 0]
         P_Srb = P_Sr[:, :, 1]
-        P_A = P_A.flatten(2).transpose(1, 2).squeeze(-1) # [B, H*W]
 
-        # print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape)
-        
-        # Compute cosine similarity
-        CM_a = F.cosine_similarity(
-            X_flat.unsqueeze(2),  # [B, H*W, 1, C]
-            P_A.unsqueeze(1),    # [B, 1, H*W]
-            dim=-1
-        )  # [B, H*W, num_slots]
+        # print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape
 
         CM_sf = F.cosine_similarity(
             X_flat.unsqueeze(2),  # [B, H*W, 1, C]
@@ -136,11 +101,7 @@ class Model(nn.Module):
             X_flat.unsqueeze(2),  # [B, H*W, 1, C]
             P_Srb.unsqueeze(1),    # [B, 1, slot_dim, num_slots]
             dim=-1
-        )  # [B, H*W, num_slots]
-        
-        # Reshape to spatial dimensions
-        similarity_map_a = CM_a.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
-        similarity_map_a = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+        )  # [B, H*W, num_slots]]
 
         similarity_map_sf = CM_sf.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
         similarity_map_sf = similarity_map_sf.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
@@ -150,7 +111,7 @@ class Model(nn.Module):
 
         # Combine aggregator, foreground, background
         combined_sim_map = torch.cat(
-            [similarity_map_a, similarity_map_sf, similarity_map_sb],
+            [similarity_map_sf, similarity_map_sb],
             dim=1
         )  # [B, 3, H, W]
         
@@ -159,7 +120,7 @@ class Model(nn.Module):
         # print("mask shape", masks.shape)
 
         # Upsample the mask to the original target image resolution.
-        masks = F.interpolate(masks, size=(1080, 1920), mode='bilinear', align_corners=False)
+        #  masks = F.interpolate(masks, size=(target.shape[-2], target.shape[-1]), mode='bilinear', align_corners=False)
         # print("upsampled mask", masks.shape)
         return masks
     
@@ -172,7 +133,7 @@ class Model(nn.Module):
         stage_1, stage_2, stage_3, stage_4 = self.encode_target(x_target)
         references_features = self.encode_references(x_references)
 
-        # Slot Output Shape: torch.Size([1, 2, 1, 1])
+        # Slot Output Shape: torch.Size([1, 2, 128, 128])
         slots = self.slot_generator(stage_1)
 
         # Output shape: torch.Size([1, 1, 16, 16])
@@ -182,21 +143,18 @@ class Model(nn.Module):
         refined_slots = self.gsa(aggregated_features, slots)
 
         # mask shape torch.Size([1, 3, 128, 128])
-        x = self.cosine_similarity_decoding(x_target, refined_slots, aggregated_features)
+        x = self.cosine_similarity_decoding(stage_1, refined_slots)
         return x
 
 class SlotGenerator(nn.Module):
     def __init__(self, in_channels, slot_num):
         super(SlotGenerator, self).__init__()  
-        self.input_1x1conv = nn.Conv2d(in_channels=in_channels, out_channels=slot_num, kernel_size=1)
-        # Pixel-wise softmax
-        self.softmax_w = nn.Softmax(dim=-1)  # Apply softmax along the last dimension (width)
-        self.softmax_h = nn.Softmax(dim=-2)  # Apply softmax along the second last dimension (height)
-        self.globalavgpool = nn.AvgPool2d(kernel_size=(128, 128))  # Pool over the entire spatial dimension
+        self.conv = nn.Conv2d(in_channels, slot_num, kernel_size=1).to(device)  # [B, slot_num, H, W]
+        self.softmaxh = nn.Softmax(dim=-1)
+        self.softmaxw = nn.Softmax(dim=-2)
 
     def forward(self, x):
-        x = self.input_1x1conv(x)
-        x = self.softmax_w(x)
-        x = self.softmax_h(x)
-        x = self.globalavgpool(x)
+        x = self.conv(x)
+        x = self.softmaxh(x)
+        x = self.softmaxw(x)
         return x

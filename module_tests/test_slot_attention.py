@@ -1,6 +1,7 @@
-from feature_aggregation_transformer import FAT
-from Slot_Attention import GuidedSlotAttention
-from test_slotgenerator import generate_slots
+import os
+from models.feature_aggregation_transformer import FAT
+from models.Slot_Attention import GuidedSlotAttention
+from module_tests.test_slotgenerator import generate_slots
 import torch
 from PIL import Image
 
@@ -9,7 +10,7 @@ if __name__ == "__main__":
     # Set random seed for reproducibility
     torch.manual_seed(42)
 
-    image_path = "C:\\School\\Y3\\SP25\\ECE570\\ECE570-Guided-Slot-Attention-for-Unsupervised-VOS\\datasets\\DAVIS\\JPEGImages\\1080p\\dog\\00000.jpg"
+    image_path = os.path.join("datasets", "DAVIS", "JPEGImages", "1080p", "dog", "00000.jpg")
     image = Image.open(image_path)
     slots = generate_slots(image)
 

@@ -1,11 +1,13 @@
 import argparse
 import os
 import torch
+from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from load_DAVIS16 import get_davis_dataloader
 # Import the model
 from models.model import Model 
+import torchvision.transforms as T
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -15,6 +17,13 @@ def train(args):
     train_loader = get_davis_dataloader(
         root_dir="datasets/DAVIS",
         subset="train",
+        resolution="480p",
+        transform=T.ToTensor(),
+        target_transform=None,
+        selected_titles=["bear", "boat", "cows"],  # Remove or change as needed.
+        batch_size=1,             # Using batch_size=1 to keep the reference image list intact.
+        shuffle=False,
+        num_workers=0             # Set to 0 for testing to avoid multiprocessing complications.
     )
     
     # Instantiate the model and send it to the device.
@@ -27,21 +36,39 @@ def train(args):
     
     for epoch in range(args.epochs):
         running_loss = 0.0
-        for i, (target_image, reference_images, mask) in enumerate(train_loader):
+        print(f"\nEpoch [{epoch+1}/{args.epochs}]")
+        
+        # Wrap tqdm around the loader
+        progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), desc="Training", leave=True)
+        for i, (target_image, reference_images, mask) in progress_bar:
             # The model's processor handles PIL images, so we do not convert target/reference images.
             # Move mask to the device and add batch dimension if necessary.
             mask = mask.to(device)
-            mask = mask.unsqueeze(0)  # [1, H, W]
-            
+            mask = (mask > 0).long()  # Convert 255→1, keep 0→0
+
+            if mask.dim() == 3:
+                # Case 1: shape is [480, 854, 2] (or similar) -> one-hot encoding.
+                if mask.shape[-1] == 2:
+                    # Convert one-hot encoding to single channel by taking the argmax.
+                    mask = mask.argmax(dim=-1)  # Now shape [480, 854]
+                # Now if the first dimension is not a batch dim, add one:
+                if mask.shape[0] != 1:
+                    mask = mask.unsqueeze(0)  # Now shape [1, 480, 854]
+            elif mask.dim() == 2:
+                # Case 2: shape is [480, 854] -> add batch dimension.
+                mask = mask.unsqueeze(0)  # Now shape [1, 480, 854]
+
+    
             optimizer.zero_grad()
+            output = model(target_image, reference_images) # torch.Size([1, 2, 64, 64])
+
+            mask_ds = torch.nn.functional.interpolate(
+                mask.unsqueeze(1).float(),       # add channel dimension to treat mask as [B, 1, H_target, W_target]
+                size=output.shape[2:],             # downsample to [H_out, W_out]
+                mode='nearest'                     # use nearest to keep the discrete labels intact
+            ).squeeze(1).long()                    # remove channel dimension back to [B, H_out, W_out]
             
-            # Forward pass.
-            # Since batch_size=1, target_image and reference_images are lists of one element.
-            # We pass the first (and only) element in each.
-            output = model(target_image, reference_images)
-            # Output is expected to have shape [1, num_classes, H_out, W_out]
-            
-            loss = criterion(output, mask)
+            loss = criterion(output, mask_ds)
             loss.backward()
             optimizer.step()
             
@@ -112,7 +139,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the segmentation model")
     parser.add_argument("--images_dir", type=str, default="data/images", help="Directory containing target images")
     parser.add_argument("--masks_dir", type=str, default="data/masks", help="Directory containing ground truth masks")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=2, help="Number of training epochs")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--log_interval", type=int, default=10, help="Logging interval (in steps)")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save model checkpoints")

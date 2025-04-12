@@ -1,4 +1,4 @@
-from model import Model
+from models.model import Model
 import torch
 
 import torch
@@ -91,10 +91,10 @@ def load_images_from_folder(image_dir, num_images):
     return images
 
 if __name__ == "__main__":
-    image_path = "C:\\School\\Y3\\SP25\\ECE570\\ECE570-Guided-Slot-Attention-for-Unsupervised-VOS\\datasets\\DAVIS\\JPEGImages\\1080p\\dog\\00000.jpg"
+    image_path = os.path.join("datasets", "DAVIS", "JPEGImages", "1080p", "dog", "00000.jpg")
     target = Image.open(image_path)
 
-    data_dir = "C:\\School\\Y3\\SP25\\ECE570\\ECE570-Guided-Slot-Attention-for-Unsupervised-VOS\\datasets\\DAVIS\\JPEGImages\\1080p\\dog"
+    data_dir = os.path.join("datasets", "DAVIS", "JPEGImages", "1080p", "dog")
     num_images = 5
     references = load_images_from_folder(data_dir, num_images)
 
