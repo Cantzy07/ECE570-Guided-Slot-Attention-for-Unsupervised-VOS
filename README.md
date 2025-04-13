@@ -27,7 +27,8 @@ This repository provides an implementation of a **Guided Slot Attention** model 
 - **`download_datasets.py`**: Facilitates downloading the DAVIS dataset or preparing it for use.  
 - **`gsa_demo.py`**: Demonstrates quick usage of the trained model on a single image set example.   
 - **`load_DAVIS16.py`**: Custom made dataloader to load in a target image, reference images (5), and ground-truth annotation mask for each training iteration. 
-- **`train.py`**: Training with custom or advanced options.  
+- **`train.py`**: Training with custom or advanced options with the DAVIS16 training image set.
+- **`test.py`**: Test model accuracy with DAVIS16 validation image set.
 
 ---
 
@@ -41,7 +42,7 @@ This repository provides an implementation of a **Guided Slot Attention** model 
 2. **Setup a Python Environment**:
     python -m venv venv
     source venv/bin/activate  # On Linux/Mac
-    # or
+    or
     venv\Scripts\activate     # On Windows
 
 3. **Install Dependencies**:
