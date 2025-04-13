@@ -9,24 +9,32 @@ from transformers import SegformerForImageClassification, SegformerImageProcesso
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Model(nn.Module):
-    def __init__(self):  
+    def __init__(self, local_channels, global_channels, embed_dim, num_slots):  
         super(Model, self).__init__()  
         self.rgb_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2").to(device)
         # self.flow_encoder = SegformerForImageClassification.from_pretrained("nvidia/mit-b2")
         self.processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b2")
-        self.slot_generator = SlotGenerator(in_channels=64, slot_num=2).to(device)
-        self.FAT_features = FAT(local_in=128, global_in=16).to(device)
-        self.gsa = GuidedSlotAttention().to(device)
-        self.encoder_projection = nn.Conv2d(64, 256, kernel_size=1).to(device)
+        self.slot_generator = SlotGenerator(in_channels=local_channels, slot_num=num_slots).to(device)
+        self.FAT_features = FAT(local_channels=local_channels, global_channels=global_channels).to(device)
+        self.gsa = GuidedSlotAttention(embed_dim=embed_dim, num_slots=num_slots).to(device)
+        self.encoder_projection = nn.Conv2d(local_channels, embed_dim, kernel_size=1).to(device)
 
         # Define the refinement CNN block.
         self.cosine_refine = nn.Sequential(
-            nn.Conv2d(2, 16, kernel_size=3, padding=1),
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(16, 8, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(8, 3, kernel_size=1)  # output channels: set to the number of segmentation classes (e.g., 3)
         ).to(device)
+
+        self.refine = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 16, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 3, kernel_size=1)
+        )
 
     def encode_target(self, image):
         # Preprocess the image
@@ -81,11 +89,11 @@ class Model(nn.Module):
 
         return combined_features
     
-    def cosine_similarity_decoding(self, X_L, P_Sr):
+    def cosine_similarity_decoding(self, P_A, X_L, P_Sr):
         """
         X_L: Original Image [B, C, H, W] torch.Size([64, 128, 128])
         P_Sr: Refined slots [B, num_slots, slot_dim] torch.Size([1, 2, 256])
-        P_A: Aggregated features [B, C', H', W'] torch.size([1, 1, 16, 16])
+        P_A: Aggregated features [B, C', H', W'] torch.size([1, 256, 32, 32])
         """
         # Flatten spatial dimensions
         # to_tensor = transforms.ToTensor()
@@ -96,7 +104,18 @@ class Model(nn.Module):
         P_Srf = P_Sr[:, :, 0]
         P_Srb = P_Sr[:, :, 1]
 
-        # print("x ps pa", X_flat.shape, P_Sr.shape, P_A.shape
+        P_A_up = F.interpolate(P_A, size=(X_L.shape[2], X_L.shape[3]),
+                           mode='bilinear', align_corners=False)  # shape: [B, C', H, W]
+        # Flatten P_A as well:
+        P_A_flat = P_A_up.flatten(2).transpose(1, 2)  # [B, H*W, C']
+        # Compute a global aggregated feature vector by averaging over all spatial locations.
+        P_A_vec = P_A_flat.mean(dim=1, keepdim=True)  # shape: [B, 1, C]
+
+        CM_a = F.cosine_similarity(
+            X_flat.unsqueeze(2),  # [B, H*W, 1, C]
+            P_A_vec.unsqueeze(1),    # [B, H*W, 1, C]
+            dim=-1
+        )  # [B, H*W, num_slots]
 
         CM_sf = F.cosine_similarity(
             X_flat.unsqueeze(2),  # [B, H*W, 1, C]
@@ -116,9 +135,12 @@ class Model(nn.Module):
         similarity_map_sb = CM_sb.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
         similarity_map_sb = similarity_map_sb.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
 
+        similarity_map_a = CM_a.view(X_L.shape[0], X_L.shape[2], X_L.shape[3], -1)
+        similarity_map_a = similarity_map_a.permute(0, 3, 1, 2)  # [B, num_slots, H, W]
+
         # Combine aggregator, foreground, background
         combined_sim_map = torch.cat(
-            [similarity_map_sf, similarity_map_sb],
+            [similarity_map_a, similarity_map_sf, similarity_map_sb],
             dim=1
         )  # [B, 3, H, W]
         
@@ -141,15 +163,20 @@ class Model(nn.Module):
         # Slot Output Shape: torch.Size([1, 2, 128, 128])
         slots = self.slot_generator(stage_1)
 
-        # Output shape: torch.Size([1, 1, 16, 16])
+        # Output shape: torch.Size([1, 256, 32, 32]
         aggregated_features = self.FAT_features(stage_1, references_features)
 
         # gsa shape torch.Size([1, 2, 256])
         refined_slots = self.gsa(aggregated_features, slots)
 
         # mask shape torch.Size([1, 3, 64, 64])
-        x = self.cosine_similarity_decoding(stage_1, refined_slots)
-        return x
+        mask = self.cosine_similarity_decoding(aggregated_features, stage_1, refined_slots)
+
+        upsampled_mask = F.interpolate(mask, size=(480, 854), mode='bilinear', align_corners=False)
+
+        upsampled_mask = self.refine(upsampled_mask)
+        
+        return upsampled_mask
 
 class SlotGenerator(nn.Module):
     def __init__(self, in_channels, slot_num):

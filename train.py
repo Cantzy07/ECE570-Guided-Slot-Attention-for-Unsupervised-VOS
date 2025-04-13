@@ -20,14 +20,14 @@ def train(args):
         resolution="480p",
         transform=T.ToTensor(),
         target_transform=None,
-        selected_titles=["bear"],  # Remove or change as needed.
+        selected_titles=None,  # Remove or change as needed.
         batch_size=1,             # Using batch_size=1 to keep the reference image list intact.
         shuffle=False,
         num_workers=0             # Set to 0 for testing to avoid multiprocessing complications.
     )
     
     # Instantiate the model and send it to the device.
-    model = Model().to(device)
+    model = Model(local_channels=64, global_channels=5, embed_dim=256, num_slots=2).to(device)
     model.train()  # set to training mode
 
     # Use CrossEntropyLoss (the model outputs a probability distribution over 3 classes)
@@ -61,14 +61,8 @@ def train(args):
     
             optimizer.zero_grad()
             output = model(target_image, reference_images) # torch.Size([1, 2, 64, 64])
-
-            mask_ds = torch.nn.functional.interpolate(
-                mask.unsqueeze(1).float(),       # add channel dimension to treat mask as [B, 1, H_target, W_target]
-                size=output.shape[2:],             # downsample to [H_out, W_out]
-                mode='nearest'                     # use nearest to keep the discrete labels intact
-            ).squeeze(1).long()                    # remove channel dimension back to [B, H_out, W_out]
             
-            loss = criterion(output, mask_ds)
+            loss = criterion(output, mask)
             loss.backward()
             optimizer.step()
             
@@ -85,61 +79,11 @@ def train(args):
         torch.save(model.state_dict(), checkpoint_path)
         print(f"Checkpoint saved to {checkpoint_path}")
 
-def test(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Create the test DataLoader from the DAVIS validation split.
-    test_loader = get_davis_dataloader(
-        root_dir="datasets/DAVIS",
-        subset="val",
-    )
-    
-    # Instantiate the model and move to the device.
-    model = Model().to(device)
-    
-    # Load the checkpoint if a checkpoint path is provided.
-    # Make sure to add '--checkpoint_path' as an argument when running the test.
-    if args.checkpoint_path is not None and os.path.exists(args.checkpoint_path):
-        checkpoint = torch.load(args.checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint)
-        print(f"Loaded checkpoint from {args.checkpoint_path}")
-    else:
-        print("No checkpoint provided or found, evaluating untrained model.")
-    
-    model.eval()  # set the model to evaluation mode
-    
-    total_correct = 0
-    total_pixels = 0
-
-    with torch.no_grad():
-        for target_image, reference_images, mask in test_loader:
-            # Transfer the ground-truth mask to device.
-            mask = mask.to(device).long()
-            # In our training function we add an extra batch dimension to the mask
-            # since our model expects [B, H, W]; adjust accordingly.
-            mask = mask.unsqueeze(0)  # shape: [1, H, W]
-            
-            # Forward pass: our dataloader returns lists with one element.
-            # Pass the first element of the target and reference image lists.
-            output = model(target_image, reference_images)
-            # The output shape is assumed to be [1, num_classes, H, W]
-            
-            # Get the predicted class per pixel.
-            predicted = torch.argmax(output, dim=1)  # shape: [1, H, W]
-            
-            # Calculate the number of correctly predicted pixels.
-            correct = (predicted == mask).sum().item()
-            total_correct += correct
-            total_pixels += mask.numel()
-    
-    pixel_accuracy = total_correct / total_pixels if total_pixels > 0 else 0
-    print(f"Test Pixel Accuracy: {pixel_accuracy * 100:.2f}%")
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the segmentation model")
     parser.add_argument("--images_dir", type=str, default="data/images", help="Directory containing target images")
     parser.add_argument("--masks_dir", type=str, default="data/masks", help="Directory containing ground truth masks")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--log_interval", type=int, default=10, help="Logging interval (in steps)")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save model checkpoints")

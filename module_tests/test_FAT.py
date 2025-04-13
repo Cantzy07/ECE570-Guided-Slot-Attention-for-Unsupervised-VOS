@@ -46,42 +46,11 @@ if __name__ == "__main__":
     x_g = torch.randn(1, batch_size, 16, 16)  # [batch_size, batch_size, 16, 16]
 
     # Initialize the model
-    model = FAT(local_in=128, global_in=16)
+    model = FAT(local_channels=64, global_channels=batch_size)
 
     # Try to do a forward pass
-    try:
-        output = model(x_l, x_g)
-        print(f"Forward pass successful!")
-        print(f"Input shapes: x_l = {x_l.shape}, x_g = {x_g.shape}")
-        print(f"Output shape: {output.shape}")
-    except Exception as e:
-        print(f"Error during forward pass: {e}")
-        
-        # Debug with shape tracing
-        print("\nLet's trace through the shapes to find the issue:")
-        
-        # Initial shapes
-        print(f"x_l shape: {x_l.shape}")
-        print(f"x_g shape: {x_g.shape}")
-        
-        # First transformations
-        x_lv = model.plv(x_l)
-        print(f"x_lv shape after plv: {x_lv.shape}")
-        
-        x_lq = x_lv
-        print(f"x_lq shape: {x_lq.shape}")
-        
-        x_lk = model.plk(x_l)
-        print(f"x_lk shape after plk: {x_lk.shape}")
-        
-        try:
-            x_gq = model.pgq(x_g)
-            print(f"x_gq shape after pgq: {x_gq.shape}")
-        except Exception as e:
-            print(f"Error at pgq: {e}")
-            print("Possible fix: Ensure x_g's last dimension matches pgq's in_features")
-            
-            # Suggest a reshape
-            print("\nSuggested code fix:")
-            print("# Transpose x_g to match expected input shape for pgq")
-            print("x_g = x_g.transpose(0, 1)  # Now shape is [batch_size, sequence_length_g]")
+    output = model(x_l, x_g)
+    print(f"Forward pass successful!")
+    print(f"Input shapes: x_l = {x_l.shape}, x_g = {x_g.shape}")
+    print(f"Output shape: {output.shape}")
+    # [1, 256, 32, 32]

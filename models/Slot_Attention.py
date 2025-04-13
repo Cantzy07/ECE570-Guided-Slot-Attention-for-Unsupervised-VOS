@@ -19,8 +19,6 @@ class GuidedSlotAttention(nn.Module):
 
         # Feature projection to match slot dimension
         self.feature_proj = nn.Sequential(
-            nn.Conv2d(1, embed_dim, kernel_size=1),  # First expand to 256 channels
-            nn.ReLU(),
             nn.Conv2d(embed_dim, embed_dim, kernel_size=1)  # Then maintain dimension
         )
 

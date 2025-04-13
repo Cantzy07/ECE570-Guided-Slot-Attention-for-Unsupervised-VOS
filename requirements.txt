@@ -1,0 +1,21 @@
+# Core PyTorch libraries (ensure you choose the correct CUDA version if needed)
+torch>=1.10.0
+torchvision>=0.11.0
+
+# Hugging Face Transformers (includes support for Segformer models)
+transformers>=4.0.0
+
+# For image processing via the Python Imaging Library (PIL)
+Pillow>=8.0.0
+
+# Numerical computing
+numpy>=1.19.0
+
+# Progress bars for loops
+tqdm>=4.50.0
+
+# Plotting library
+matplotlib>=3.3.0
+
+# Image processing library
+scikit-image>=0.18.0

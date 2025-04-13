@@ -1,100 +1,75 @@
 import torch.nn as nn
-import torch
-import math
-
-class AttentivePooling(nn.Module):
-    """Pool global features into a compact vector."""
-    def __init__(self, embed_dim):
-        super().__init__()
-        self.query = nn.Linear(embed_dim, 1)  # Learned attention mechanism
-
-    def forward(self, x):
-        # x: [batch, seq_len, embed_dim]
-        attn_weights = torch.softmax(self.query(x), dim=1)  # [batch, seq_len, 1]
-        pooled = torch.sum(x * attn_weights, dim=1)  # [batch, embed_dim]
-        return pooled
-
-class CrossAttention(nn.Module):
-    """Local features (query) attend to global features (key, value)."""
-    def __init__(self, embed_dim, num_heads):
-        super().__init__()
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        self.scale = math.sqrt(self.head_dim)
-
-        self.q_proj = nn.Linear(embed_dim, embed_dim)
-        self.kv_proj = nn.Linear(embed_dim, 2 * embed_dim)
-        self.out_proj = nn.Linear(embed_dim, embed_dim)
-
-    def forward(self, x_local, x_global):
-        # x_local: [batch, seq_len, embed_dim] (queries)
-        # x_global: [batch, embed_dim] (keys/values)
-        batch_size, seq_len, _ = x_local.shape
-
-        # Project queries (local)
-        q = self.q_proj(x_local).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)  # [batch, heads, seq_len, head_dim]
-
-        # Project keys/values (global)
-        kv = self.kv_proj(x_global).view(batch_size, 1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        k, v = kv[0], kv[1]  # [batch, heads, 1, head_dim]
-
-        # Attention scores
-        attn_scores = (q @ k.transpose(-2, -1)) / self.scale  # [batch, heads, seq_len, 1]
-        attn_weights = torch.softmax(attn_scores, dim=-1)
-        output = (attn_weights @ v).transpose(1, 2).reshape(batch_size, seq_len, -1)  # [batch, seq_len, embed_dim]
-
-        return self.out_proj(output)
+import torch.nn.functional as F
 
 class FAT(nn.Module):
-    def __init__(self, local_in, global_in, embed_dim=256, num_heads=4):
+    def __init__(self, local_channels, global_channels, embed_dim=256, num_heads=4):
         super().__init__()
-        # Local feature projection
-        self.local_proj = nn.Linear(local_in*local_in, embed_dim)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
 
-        # Global feature projection + pooling
-        self.global_proj = nn.Linear(global_in*global_in, embed_dim)
-        self.attentive_pool = AttentivePooling(embed_dim)
-
-        # Cross-attention (local × global)
-        self.cross_attn = CrossAttention(embed_dim, num_heads)
-
-        # Self-attention + FFN
+        # Convolutional projections (preserve spatial dimensions)
+        self.local_conv = nn.Conv2d(local_channels, embed_dim, kernel_size=1)
+        self.global_conv = nn.Conv2d(global_channels, embed_dim, kernel_size=1)
+        
+        # Cross-attention: using standard multihead attention.
+        # We'll flatten the spatial dimensions of the local features.
+        self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads)
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads)
+        
+        # Feed-forward network: implemented with 1x1 convolutions
         self.ffn = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim * 4),
+            nn.Conv2d(embed_dim, embed_dim * 4, kernel_size=1),
             nn.ReLU(),
-            nn.Linear(embed_dim * 4, embed_dim)
+            nn.Conv2d(embed_dim * 4, embed_dim, kernel_size=1)
         )
+        
+        # Two normalization layers after attention and feed-forward blocks.
+        # (LayerNorm is applied on the channel dimension after reshaping.)
         self.norm1 = nn.LayerNorm(embed_dim)
-        self.norm2 = nn.LayerNorm(embed_dim)
-
-        # Mask decoder (example)
-        self.mask_decoder = nn.Sequential(
-            nn.ConvTranspose2d(embed_dim, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 1, kernel_size=1)  # Output mask [1, H, W]
-        )
     
     def forward(self, x_l, x_g):
-        # Local features: [1, 64, 128, 128] → [1, 64, embed_dim]
-        x_l_flat = x_l.view(1, 64, -1)
-        x_local = self.local_proj(x_l_flat)
+        B = x_l.shape[0]
+        
+        # Project local features with a convolution that preserves spatial dimensions.
+        local_feat = self.local_conv(x_l)  # [B, embed_dim, H_l, W_l]
+        # Flatten the spatial dimensions for attention;
+        # shape: [H_l*W_l, B, embed_dim]
+        B, C, H_l, W_l = local_feat.shape
+        local_flat = local_feat.view(B, C, H_l * W_l).permute(2, 0, 1)
 
-        # Global features: [1, batch_size, 16, 16] → [1, embed_dim]
-        x_g_flat = x_g.view(1, x_g.shape[1], -1)
-        x_global = self.global_proj(x_g_flat)
-        x_global = self.attentive_pool(x_global)  # [1, embed_dim]
+        # Here, we reduce the spatial dimensions (e.g., to 32x32 = 1024 tokens).
+        downsampled_feat = F.adaptive_avg_pool2d(local_feat, (32, 32))
+        B, C, H_down, W_down = downsampled_feat.shape  # Now H_down*W_down tokens
+        local_flat = downsampled_feat.view(B, C, H_down * W_down).permute(2, 0, 1)  # [H_down*W_down, B, embed_dim]
+        
+        # Process global features with a convolution and apply pooling to get a global summary.
+        global_feat = self.global_conv(x_g)  # [B, embed_dim, H_g, W_g]
+        # Use adaptive average pooling over the spatial dimensions to retain contextual info.
+        global_pooled = F.adaptive_avg_pool2d(global_feat, (1, 1))  # [B, embed_dim, 1, 1]
+        global_flat = global_pooled.view(B, 1, self.embed_dim).permute(1, 0, 2)  # [1, B, embed_dim]
+        
+        # Cross-attention: let each spatial location in the local feature attend to the global context.
+        cross_attn_out, _ = self.cross_attn(query=local_flat, key=global_flat, value=global_flat)
+        # Residual connection: add cross-attended information back to the original local tokens.
+        local_cross = local_flat + cross_attn_out
+        
+        # Self-attention on local tokens over their spatial grid.
+        self_attn_out, _ = self.self_attn(query=local_cross, key=local_cross, value=local_cross)
+        local_sa = local_cross + self_attn_out
+        
+        # Reshape back into spatial dimensions.
+        local_sa = local_sa.permute(1, 2, 0).contiguous().view(B, self.embed_dim, H_down, W_down)
+        
+        # Feed-forward network (with conv layers)
+        ffn_out = self.ffn(local_sa)
+        ffn_res = local_sa + ffn_out
+        
+        # Apply normalization.
+        # LayerNorm expects the normalized dimension to be the last dimension.
+        # Rearrange to [B, H_l, W_l, embed_dim], normalize, then go back.
+        norm_input = ffn_res.permute(0, 2, 3, 1).contiguous()
+        normed = self.norm1(norm_input)
 
-        # Cross-attention
-        x_cross = self.cross_attn(x_local, x_global)  # [1, 64, embed_dim]
-
-        # Self-attention + FFN
-        x_self = self.self_attn(x_cross, x_cross, x_cross)[0]  # [1, 64, embed_dim]
-        x_out = self.norm1(x_cross + x_self)
-        x_out = self.norm2(x_out + self.ffn(x_out))
-
-        # Generate mask: [1, 64, embed_dim] → [1, embed_dim, 8, 8] → upsample
-        x_out = x_out.transpose(1, 2).view(1, -1, 8, 8)  # Adjust spatial dims as needed
-        mask = self.mask_decoder(x_out)  # [1, 1, H, W]
-
-        return mask
+        aggregated_features = normed.permute(0, 3, 1, 2)
+        
+        return aggregated_features

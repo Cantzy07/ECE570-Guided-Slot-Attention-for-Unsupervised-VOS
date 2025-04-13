@@ -98,8 +98,8 @@ if __name__ == "__main__":
     num_images = 5
     references = load_images_from_folder(data_dir, num_images)
 
-    model = Model()
+    model = Model(local_channels=64, global_channels=num_images, embed_dim=256, num_slots=2)
     mask = model(target, references)
     print("mask shape", mask.shape)
 
-    # mask shape torch.Size([1, 258, 32, 32])
+    # mask shape torch.Size([1, 3, 128, 128])

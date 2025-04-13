@@ -151,7 +151,7 @@ class DAVISDataset(Dataset):
                 ref_img = self.transform(ref_img)
             reference_images.append(ref_img)
         
-        return target_image, reference_images, target_anno_tensor
+        return target_image, reference_images[:5], target_anno_tensor
 
 def get_davis_dataloader(root_dir="datasets/DAVIS",
                          subset="train",

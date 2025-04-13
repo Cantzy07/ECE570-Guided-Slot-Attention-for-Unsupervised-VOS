@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # Initialize the model
     gsa = GuidedSlotAttention()
-    fat = FAT(local_in=128, global_in=16)
+    fat = FAT(local_channels=64, global_channels=batch_size)
     fat_output = fat(x_l, x_g)
     slotatt_output = gsa(fat_output, slots)
 
