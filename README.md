@@ -21,8 +21,7 @@ This repository provides an implementation of a **Guided Slot Attention** model 
 
 ## Project Structure
 - **`Datasets/DAVIS/`**: Contains the DAVIS dataset files after download/preprocessing.  
-- **`models/`**: Houses the neural network architectures for the guided slot attention model. Contains the feature aggregation transformer, slot attention, and main gsa model.
-- **`implementation/`**: Writeup files for implementation checkpoints 2/3.  
+- **`models/`**: Houses the neural network architectures for the guided slot attention model. Contains the feature aggregation transformer, slot attention, and main gsa model. 
 - **`module_tests/`**: Scripts for validating individual parts of the architecture.
 - **`download_datasets.py`**: Facilitates downloading the DAVIS dataset or preparing it for use.  
 - **`gsa_demo.py`**: Demonstrates quick usage of the trained model on a single image set example.   
