@@ -33,6 +33,9 @@ This repository provides an implementation of a **Guided Slot Attention** model 
 
 ## Installation and Dependencies
 
+0. **Download Trained Model**:
+    https://drive.google.com/file/d/1-1Kws1GdHebNYgnWzNtu-j3j8NQEmFHO/view?usp=sharing
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/yourusername/guided-slot-attention.git
