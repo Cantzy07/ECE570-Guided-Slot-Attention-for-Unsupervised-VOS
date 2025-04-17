@@ -1,3 +1,5 @@
+# DOWNLOAD LINK FOR TRAINED MODEL IN THE README
+
 import argparse
 import os
 import torch
